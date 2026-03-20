@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smoke Effect</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="smokeCanvas"></canvas>
+  <video id="webcam" autoplay playsinline></video>
+  <div id="modeBtn" class="mode-btn">Realistic</div>
+  <div id="error" class="error-msg" hidden></div>
+
+  <!-- CDN Dependencies (version pinned) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+
+  <!-- App scripts (added as files are created) -->
+</body>
+</html>
