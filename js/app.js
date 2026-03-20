@@ -70,9 +70,15 @@
     return { state: 'fingertip', emitPos: handState.cigTip, isExhale: false };
   }
 
-  async function mainLoop() {
+  let lastTime = 0;
+
+  async function mainLoop(timestamp) {
+    const dt = lastTime ? timestamp - lastTime : 16;
+    lastTime = timestamp;
+
     await HandDetector.send(video);
     await FaceDetector.send(video);
+
     const landmarks = HandDetector.getLandmarks();
     const handState = HandDetector.update(landmarks);
 
@@ -84,49 +90,19 @@
       now
     );
 
+    if (smokeResult.emitPos) {
+      SmokeSystem.emit(
+        smokeResult.emitPos.x,
+        smokeResult.emitPos.y,
+        canvas.width,
+        canvas.height,
+        SmokeModes.get(),
+        smokeResult.isExhale
+      );
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Debug: draw landmarks
-    if (landmarks) {
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-      for (const lm of landmarks) {
-        const x = canvas.width * (1 - lm.x);
-        const y = canvas.height * lm.y;
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Debug: pose status
-    ctx.fillStyle = handState.poseActive ? 'rgba(0, 255, 0, 0.8)' : 'rgba(255, 0, 0, 0.5)';
-    ctx.font = '16px monospace';
-    ctx.fillText(handState.poseActive ? 'CIG POSE DETECTED' : 'NO POSE', 20, 30);
-
-    if (handState.cigTip) {
-      const tx = canvas.width * (1 - handState.cigTip.x);
-      const ty = canvas.height * handState.cigTip.y;
-      ctx.fillStyle = 'yellow';
-      ctx.beginPath();
-      ctx.arc(tx, ty, 8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Debug: mouth position
-    const mouth = FaceDetector.getMouth();
-    if (mouth) {
-      const mx = canvas.width * (1 - mouth.x);
-      const my = canvas.height * mouth.y;
-      ctx.fillStyle = 'cyan';
-      ctx.beginPath();
-      ctx.arc(mx, my, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Debug: show state (drawn after clear so it's always visible)
-    ctx.fillStyle = 'white';
-    ctx.font = '14px monospace';
-    ctx.fillText('State: ' + smokeResult.state, 20, 50);
+    SmokeSystem.update(ctx, dt, Noise.noise2D);
 
     requestAnimationFrame(mainLoop);
   }
@@ -167,6 +143,31 @@
       requestAnimationFrame(mainLoop);
     }
   }
+
+  // --- Keyboard shortcuts ---
+  const modeBtn = document.getElementById('modeBtn');
+  modeBtn.textContent = SmokeModes.getName();
+
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'KeyM') {
+      e.preventDefault();
+      const mode = SmokeModes.toggle();
+      modeBtn.textContent = mode.name;
+    } else if (e.code === 'KeyF') {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    } else if (e.code === 'KeyH') {
+      video.classList.toggle('hidden');
+    }
+  });
+
+  modeBtn.addEventListener('click', () => {
+    const mode = SmokeModes.toggle();
+    modeBtn.textContent = mode.name;
+  });
 
   init();
 
