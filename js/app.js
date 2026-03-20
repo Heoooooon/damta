@@ -26,13 +26,51 @@
     }
   }
 
-  function mainLoop() {
+  async function mainLoop() {
+    await HandDetector.send(video);
+    const landmarks = HandDetector.getLandmarks();
+    const handState = HandDetector.update(landmarks);
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // TODO: MediaPipe 처리, 파티클 업데이트/렌더링
+
+    // Debug: draw landmarks
+    if (landmarks) {
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+      for (const lm of landmarks) {
+        const x = canvas.width * (1 - lm.x);
+        const y = canvas.height * lm.y;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Debug: pose status
+    ctx.fillStyle = handState.poseActive ? 'rgba(0, 255, 0, 0.8)' : 'rgba(255, 0, 0, 0.5)';
+    ctx.font = '16px monospace';
+    ctx.fillText(handState.poseActive ? 'CIG POSE DETECTED' : 'NO POSE', 20, 30);
+
+    if (handState.cigTip) {
+      const tx = canvas.width * (1 - handState.cigTip.x);
+      const ty = canvas.height * handState.cigTip.y;
+      ctx.fillStyle = 'yellow';
+      ctx.beginPath();
+      ctx.arc(tx, ty, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     requestAnimationFrame(mainLoop);
   }
 
   async function init() {
+    // Check MediaPipe loading
+    const handErr = HandDetector.getError();
+    if (handErr) {
+      errorEl.textContent = handErr + '\n페이지를 새로고침해주세요.';
+      errorEl.hidden = false;
+      return;
+    }
+
     const camReady = await initWebcam();
     if (camReady) {
       requestAnimationFrame(mainLoop);
