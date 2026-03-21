@@ -24,6 +24,7 @@
     [362, 385, 387, 263, 373, 380, 362],
     [168, 6, 195, 5, 4, 1, 19, 94, 2, 98],
     [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291],
+    [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291],
   ];
 
   const OVERLAY_STYLE = {
@@ -116,6 +117,25 @@
     }
   }
 
+  const MAIN_CANVAS_STYLE = {
+    face: {
+      stroke: '182, 210, 255',
+      strokeAlpha: 0.35,
+      pointAlpha: 0.25,
+      lineWidthScale: 0.0014,
+      pointRadius: 1.8,
+    },
+    hand: {
+      idleStroke: '255, 245, 230',
+      activeStroke: '255, 200, 120',
+      idleStrokeAlpha: 0.45,
+      activeStrokeAlpha: 0.7,
+      pointAlpha: 0.5,
+      lineWidthScale: 0.0018,
+      pointRadius: 2.5,
+    },
+  };
+
   function draw(ctx, canvasW, canvasH, options) {
     const handPolylines = getHandPolylines(options && options.handLandmarks);
     const facePolylines = getFacePolylines(options && options.faceLandmarks);
@@ -125,34 +145,38 @@
 
     const mirrored = !!(options && options.mirrored);
     const poseActive = !!(options && options.poseActive);
+    const style = (options && options.mainCanvas) ? MAIN_CANVAS_STYLE : null;
 
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     if (facePolylines.length) {
-      ctx.strokeStyle = `rgba(${OVERLAY_STYLE.face.stroke}, ${OVERLAY_STYLE.face.strokeAlpha})`;
-      ctx.fillStyle = `rgba(${OVERLAY_STYLE.face.stroke}, ${OVERLAY_STYLE.face.pointAlpha})`;
-      ctx.lineWidth = Math.max(1.1, Math.min(canvasW, canvasH) * OVERLAY_STYLE.face.lineWidthScale);
+      const faceStyle = style ? style.face : OVERLAY_STYLE.face;
+      ctx.strokeStyle = `rgba(${faceStyle.stroke}, ${faceStyle.strokeAlpha})`;
+      ctx.fillStyle = `rgba(${faceStyle.stroke}, ${faceStyle.pointAlpha})`;
+      ctx.lineWidth = Math.max(1.1, Math.min(canvasW, canvasH) * faceStyle.lineWidthScale);
       for (const polyline of facePolylines) {
         drawPolyline(ctx, canvasW, canvasH, polyline, mirrored);
-        drawPoints(ctx, canvasW, canvasH, polyline, OVERLAY_STYLE.face.pointRadius, mirrored);
+        drawPoints(ctx, canvasW, canvasH, polyline, faceStyle.pointRadius, mirrored);
       }
     }
 
     if (handPolylines.length) {
+      const handStyle = style ? style.hand : OVERLAY_STYLE.hand;
       const handStrokeAlpha = poseActive
-        ? OVERLAY_STYLE.hand.activeStrokeAlpha
-        : OVERLAY_STYLE.hand.idleStrokeAlpha;
+        ? handStyle.activeStrokeAlpha
+        : handStyle.idleStrokeAlpha;
       const handStroke = poseActive
-        ? OVERLAY_STYLE.hand.activeStroke
-        : OVERLAY_STYLE.hand.idleStroke;
+        ? handStyle.activeStroke
+        : handStyle.idleStroke;
+      const pointRadius = handStyle.pointRadius;
       ctx.strokeStyle = `rgba(${handStroke}, ${handStrokeAlpha})`;
-      ctx.fillStyle = `rgba(${handStroke}, ${OVERLAY_STYLE.hand.pointAlpha})`;
-      ctx.lineWidth = Math.max(1.3, Math.min(canvasW, canvasH) * OVERLAY_STYLE.hand.lineWidthScale);
+      ctx.fillStyle = `rgba(${handStroke}, ${handStyle.pointAlpha})`;
+      ctx.lineWidth = Math.max(1.3, Math.min(canvasW, canvasH) * handStyle.lineWidthScale);
       for (const polyline of handPolylines) {
         drawPolyline(ctx, canvasW, canvasH, polyline, mirrored);
-        drawPoints(ctx, canvasW, canvasH, polyline, OVERLAY_STYLE.hand.pointRadius, mirrored);
+        drawPoints(ctx, canvasW, canvasH, polyline, pointRadius, mirrored);
       }
     }
 

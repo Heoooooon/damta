@@ -71,6 +71,13 @@
       poseActive: handState.poseActive,
       mirrored: false,
     });
+    TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+      handLandmarks: landmarks,
+      faceLandmarks,
+      poseActive: handState.poseActive,
+      mirrored: true,
+      mainCanvas: true,
+    });
     if (handState.poseActive && handState.cigTip) {
       SmokeSystem.drawEmber(
         ctx,
