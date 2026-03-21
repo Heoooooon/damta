@@ -2,6 +2,7 @@ const FaceDetector = (function () {
   let mouthPos = null;
   let prevMouthPos = null;
   let interpMouthPos = null;
+  let latestLandmarks = null;
   let faceHeight = 0;
   let frameCount = 0;
   let initError = null;
@@ -24,10 +25,12 @@ const FaceDetector = (function () {
     faceMesh.onResults((results) => {
       if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         const lm = results.multiFaceLandmarks[0];
+        latestLandmarks = lm;
         prevMouthPos = mouthPos ? { x: mouthPos.x, y: mouthPos.y } : null;
         mouthPos = { x: lm[13].x, y: lm[13].y };
         faceHeight = Math.hypot(lm[10].x - lm[152].x, lm[10].y - lm[152].y);
       } else {
+        latestLandmarks = null;
         mouthPos = null;
         prevMouthPos = null;
         faceHeight = 0;
@@ -74,9 +77,13 @@ const FaceDetector = (function () {
     return faceHeight;
   }
 
+  function getLandmarks() {
+    return latestLandmarks;
+  }
+
   function getError() {
     return initError;
   }
 
-  return { send, getMouth, getFaceHeight, getError };
+  return { send, getMouth, getFaceHeight, getLandmarks, getError };
 })();

@@ -2,73 +2,28 @@
   const canvas = document.getElementById('smokeCanvas');
   const ctx = canvas.getContext('2d');
   const video = document.getElementById('webcam');
+  const trackingCanvas = document.getElementById('trackingCanvas');
+  const trackingCtx = trackingCanvas.getContext('2d');
   const errorEl = document.getElementById('error');
+  const smokeStateMachine = InteractionCore.createSmokeStateMachine();
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
-
-  // --- Smoke State Machine ---
-  const NEAR_MOUTH_RATIO = 0.35;
-  const EXHALE_MIN_MOVE = 0.15;
-  const INHALE_MIN_DURATION = 300; // ms
-
-  let smokeState = 'idle'; // idle | fingertip | inhaling | exhaling
-  let inhaleStartTime = 0;
-  let lastMouthDist = Infinity;
-  let exhaleTriggered = false;
-
-  function updateSmokeState(handState, mouth, faceH, now) {
-    if (!handState.poseActive || !handState.cigTip) {
-      smokeState = 'idle';
-      inhaleStartTime = 0;
-      exhaleTriggered = false;
-      return { state: 'idle', emitPos: null, isExhale: false };
+  function resizeTrackingCanvas() {
+    const rect = video.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+    if (trackingCanvas.width !== width || trackingCanvas.height !== height) {
+      trackingCanvas.width = width;
+      trackingCanvas.height = height;
     }
-
-    if (!mouth || faceH === 0) {
-      smokeState = 'fingertip';
-      exhaleTriggered = false;
-      return { state: 'fingertip', emitPos: handState.cigTip, isExhale: false };
-    }
-
-    const tipToMouth = Math.hypot(
-      handState.cigTip.x - mouth.x,
-      handState.cigTip.y - mouth.y
-    );
-    const nearMouth = tipToMouth < NEAR_MOUTH_RATIO * faceH;
-
-    if (nearMouth) {
-      if (smokeState !== 'inhaling') {
-        inhaleStartTime = now;
-        lastMouthDist = tipToMouth;
-      }
-      smokeState = 'inhaling';
-      exhaleTriggered = false;  // reset on new inhale
-      return { state: 'inhaling', emitPos: null, isExhale: false };
-    }
-
-    // Hand moved away from mouth
-    if (smokeState === 'inhaling' && !exhaleTriggered) {
-      const moved = tipToMouth - lastMouthDist;
-      const longEnough = (now - inhaleStartTime) >= INHALE_MIN_DURATION;
-      const farEnough = moved > EXHALE_MIN_MOVE * faceH;
-
-      if (longEnough && farEnough) {
-        smokeState = 'exhaling';
-        exhaleTriggered = true;
-        return { state: 'exhaling', emitPos: mouth, isExhale: true };
-      }
-    }
-
-    // Default or after exhale: fingertip smoke
-    smokeState = 'fingertip';
-    exhaleTriggered = false;  // reset when back to fingertip (allows next inhale-exhale cycle)
-    return { state: 'fingertip', emitPos: handState.cigTip, isExhale: false };
   }
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('resize', resizeTrackingCanvas);
+  resizeCanvas();
+  resizeTrackingCanvas();
 
   let lastTime = 0;
 
@@ -81,28 +36,106 @@
 
     const landmarks = HandDetector.getLandmarks();
     const handState = HandDetector.update(landmarks);
+    const mouth = FaceDetector.getMouth();
+    const faceH = FaceDetector.getFaceHeight();
+    const faceLandmarks = FaceDetector.getLandmarks();
 
     const now = performance.now();
-    const smokeResult = updateSmokeState(
-      handState,
-      FaceDetector.getMouth(),
-      FaceDetector.getFaceHeight(),
-      now
-    );
+    const smokeResult = smokeStateMachine.update({
+      poseActive: handState.poseActive,
+      cigTip: handState.cigTip,
+      mouth,
+      faceHeight: faceH,
+    }, now);
 
-    if (smokeResult.emitPos) {
+    if (smokeResult.emitPos && smokeResult.emission.type) {
       SmokeSystem.emit(
         smokeResult.emitPos.x,
         smokeResult.emitPos.y,
         canvas.width,
         canvas.height,
         SmokeModes.get(),
-        smokeResult.isExhale
+        smokeResult.emission,
+        dt
       );
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    SmokeSystem.update(ctx, dt, Noise.noise2D);
+    trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
+    SmokeSystem.update(ctx, dt, Noise.noise2D, {
+      dormant: smokeResult.state === 'idle',
+    });
+    TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+      handLandmarks: landmarks,
+      faceLandmarks,
+      poseActive: handState.poseActive,
+      mirrored: false,
+    });
+    if (handState.poseActive && handState.cigTip) {
+      SmokeSystem.drawEmber(
+        ctx,
+        handState.cigTip.x,
+        handState.cigTip.y,
+        canvas.width,
+        canvas.height,
+        SmokeModes.get(),
+        smokeResult.state,
+        now
+      );
+    }
+
+    const analysis = handState.analysis || HandDetector.getLastAnalysis();
+    let debugGap = null;
+    let debugScore = null;
+    let mouthDistDebug = null;
+    let thresholdDebug = null;
+    if (handState.cigTip && mouth && faceH > 0) {
+      mouthDistDebug = InteractionCore.dist(handState.cigTip, mouth).toFixed(3);
+      if (smokeResult.thresholds) {
+        thresholdDebug =
+          smokeResult.thresholds.enter.toFixed(3) +
+          ' -> ' +
+          smokeResult.thresholds.exit.toFixed(3);
+      }
+    }
+    if (analysis) {
+      debugGap = analysis.gapRatio ? analysis.gapRatio.toFixed(3) : null;
+      debugScore = analysis.score != null ? analysis.score.toFixed(3) : null;
+    }
+    _lastDebug = {
+      landmarks: landmarks ? landmarks.length : 0,
+      pose: handState.poseActive,
+      poseScore: debugScore,
+      state: smokeResult.state,
+      emission: smokeResult.emission.type,
+      particles: SmokeSystem.getActiveCount(),
+      gapPalm: debugGap,
+      mouthDist: mouthDistDebug,
+      mouthThreshold: thresholdDebug,
+      faceHeight: faceH ? faceH.toFixed(3) : null,
+      fingers: landmarks ? {
+        idx: landmarks[8].y < landmarks[6].y,
+        mid: landmarks[12].y < landmarks[10].y,
+        ring: landmarks[16].y < landmarks[14].y,
+        pinky: landmarks[20].y < landmarks[18].y,
+      } : null,
+    };
+
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font = '14px monospace';
+    ctx.fillText('Landmarks: ' + (_lastDebug.landmarks || 'NO'), 20, 30);
+    ctx.fillText('Pose: ' + (_lastDebug.pose ? 'ACTIVE' : 'inactive'), 20, 50);
+    ctx.fillText('State: ' + _lastDebug.state + ' / ' + (_lastDebug.emission || 'none'), 20, 70);
+    ctx.fillText('Particles: ' + _lastDebug.particles, 20, 90);
+    if (debugGap) {
+      ctx.fillText('Gap/Palm: ' + debugGap + ' | Score: ' + debugScore, 20, 110);
+      const f = _lastDebug.fingers;
+      ctx.fillText('idx=' + f.idx + ' mid=' + f.mid + ' ring=' + f.ring + ' pinky=' + f.pinky, 20, 130);
+    }
+    if (mouthDistDebug) {
+      ctx.fillText('MouthDist: ' + mouthDistDebug + ' / Threshold: ' + thresholdDebug, 20, 150);
+    }
+    ctx.fillText('Snapshots: ' + _snapshots.length + ' (press P)', 20, 170);
 
     requestAnimationFrame(mainLoop);
   }
@@ -144,6 +177,10 @@
     }
   }
 
+  // --- Debug snapshots ---
+  let _lastDebug = {};
+  const _snapshots = [];
+
   // --- Keyboard shortcuts ---
   const modeBtn = document.getElementById('modeBtn');
   modeBtn.textContent = SmokeModes.getName();
@@ -159,6 +196,13 @@
       } else {
         document.exitFullscreen();
       }
+    } else if (e.code === 'KeyP') {
+      const snap = JSON.parse(JSON.stringify(_lastDebug));
+      snap.time = new Date().toISOString();
+      _snapshots.push(snap);
+      navigator.clipboard.writeText(JSON.stringify(_snapshots, null, 2)).then(() => {
+        console.log('Snapshot #' + _snapshots.length + ' copied to clipboard');
+      });
     } else if (e.code === 'KeyH') {
       video.classList.toggle('hidden');
     }

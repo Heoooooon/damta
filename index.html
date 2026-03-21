@@ -9,6 +9,7 @@
 <body>
   <canvas id="smokeCanvas"></canvas>
   <video id="webcam" autoplay playsinline></video>
+  <canvas id="trackingCanvas"></canvas>
   <div id="modeBtn" class="mode-btn">Realistic</div>
   <div id="error" class="error-msg" hidden></div>
 
@@ -19,10 +20,13 @@
 
   <!-- App scripts (added as files are created) -->
   <script src="js/noise.js"></script>
+  <script src="js/interaction-core.js"></script>
   <script src="js/modes.js"></script>
+  <script src="js/smoke-core.js"></script>
   <script src="js/hand.js"></script>
   <script src="js/face.js"></script>
   <script src="js/smoke.js"></script>
+  <script src="js/tracking-overlay.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
