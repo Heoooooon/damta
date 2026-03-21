@@ -1,7 +1,10 @@
 const HandDetector = (function () {
-  let latestLandmarks = null;
+  let allHandLandmarks = [];
   let initError = null;
-  const poseTracker = InteractionCore.createPoseTracker();
+  const poseTrackers = [
+    InteractionCore.createPoseTracker(),
+    InteractionCore.createPoseTracker(),
+  ];
 
   // --- MediaPipe Hands setup ---
   let hands;
@@ -12,7 +15,7 @@ const HandDetector = (function () {
     });
 
     hands.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.5,
@@ -20,17 +23,28 @@ const HandDetector = (function () {
 
     hands.onResults((results) => {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        latestLandmarks = results.multiHandLandmarks[0];
+        allHandLandmarks = results.multiHandLandmarks;
       } else {
-        latestLandmarks = null;
+        allHandLandmarks = [];
       }
     });
   } catch (err) {
     initError = 'MediaPipe Hands 로딩 실패: ' + err.message;
   }
 
+  function updateAll() {
+    const results = [];
+    for (let i = 0; i < 2; i++) {
+      const landmarks = allHandLandmarks[i] || null;
+      const state = poseTrackers[i].update(landmarks);
+      results.push(state);
+    }
+    return results;
+  }
+
+  // Legacy single-hand API (returns first hand)
   function update(landmarks) {
-    return poseTracker.update(landmarks);
+    return poseTrackers[0].update(landmarks);
   }
 
   async function send(videoEl) {
@@ -43,7 +57,11 @@ const HandDetector = (function () {
   }
 
   function getLandmarks() {
-    return latestLandmarks;
+    return allHandLandmarks[0] || null;
+  }
+
+  function getAllLandmarks() {
+    return allHandLandmarks;
   }
 
   function getError() {
@@ -51,8 +69,8 @@ const HandDetector = (function () {
   }
 
   function getLastAnalysis() {
-    return poseTracker.getLastAnalysis();
+    return poseTrackers[0].getLastAnalysis();
   }
 
-  return { send, getLandmarks, update, getError, getLastAnalysis };
+  return { send, getLandmarks, getAllLandmarks, update, updateAll, getError, getLastAnalysis };
 })();

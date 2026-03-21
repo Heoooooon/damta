@@ -5,7 +5,10 @@
   const trackingCanvas = document.getElementById('trackingCanvas');
   const trackingCtx = trackingCanvas.getContext('2d');
   const errorEl = document.getElementById('error');
-  const smokeStateMachine = InteractionCore.createSmokeStateMachine();
+  const smokeStateMachines = [
+    InteractionCore.createSmokeStateMachine(),
+    InteractionCore.createSmokeStateMachine(),
+  ];
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -34,63 +37,99 @@
     await HandDetector.send(video);
     await FaceDetector.send(video);
 
-    const landmarks = HandDetector.getLandmarks();
-    const handState = HandDetector.update(landmarks);
+    const handStates = HandDetector.updateAll();
+    const allLandmarks = HandDetector.getAllLandmarks();
     const mouth = FaceDetector.getMouth();
     const faceH = FaceDetector.getFaceHeight();
     const faceLandmarks = FaceDetector.getLandmarks();
 
     const now = performance.now();
-    const smokeResult = smokeStateMachine.update({
-      poseActive: handState.poseActive,
-      cigTip: handState.cigTip,
-      mouth,
-      faceHeight: faceH,
-    }, now);
+    let anyActive = false;
+    const smokeResults = [];
+    for (let h = 0; h < handStates.length; h++) {
+      const handState = handStates[h];
+      const smokeResult = smokeStateMachines[h].update({
+        poseActive: handState.poseActive,
+        cigTip: handState.cigTip,
+        mouth,
+        faceHeight: faceH,
+      }, now);
+      smokeResults.push(smokeResult);
 
-    if (smokeResult.emitPos && smokeResult.emission.type) {
-      SmokeSystem.emit(
-        smokeResult.emitPos.x,
-        smokeResult.emitPos.y,
-        canvas.width,
-        canvas.height,
-        SmokeModes.get(),
-        smokeResult.emission,
-        dt
-      );
+      if (smokeResult.emitPos && smokeResult.emission.type) {
+        SmokeSystem.emit(
+          smokeResult.emitPos.x,
+          smokeResult.emitPos.y,
+          canvas.width,
+          canvas.height,
+          SmokeModes.get(),
+          smokeResult.emission,
+          dt
+        );
+      }
+      if (smokeResult.state !== 'idle') anyActive = true;
     }
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
     SmokeSystem.update(ctx, dt, Noise.noise2D, {
-      dormant: smokeResult.state === 'idle',
+      dormant: !anyActive,
     });
-    TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
-      handLandmarks: landmarks,
-      faceLandmarks,
-      poseActive: handState.poseActive,
-      mirrored: false,
-    });
-    TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
-      handLandmarks: landmarks,
-      faceLandmarks,
-      poseActive: handState.poseActive,
-      mirrored: true,
-      mainCanvas: true,
-    });
-    if (handState.poseActive && handState.cigTip) {
-      SmokeSystem.drawEmber(
-        ctx,
-        handState.cigTip.x,
-        handState.cigTip.y,
-        canvas.width,
-        canvas.height,
-        SmokeModes.get(),
-        smokeResult.state,
-        now
-      );
+
+    // Draw overlays for each detected hand
+    for (let h = 0; h < allLandmarks.length; h++) {
+      TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+        handLandmarks: allLandmarks[h],
+        faceLandmarks: h === 0 ? faceLandmarks : null,
+        poseActive: handStates[h] ? handStates[h].poseActive : false,
+        mirrored: false,
+      });
+      TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+        handLandmarks: allLandmarks[h],
+        faceLandmarks: h === 0 ? faceLandmarks : null,
+        poseActive: handStates[h] ? handStates[h].poseActive : false,
+        mirrored: true,
+        mainCanvas: true,
+      });
+    }
+    // Draw face only if no hands detected
+    if (allLandmarks.length === 0 && faceLandmarks) {
+      TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+        handLandmarks: null,
+        faceLandmarks,
+        poseActive: false,
+        mirrored: false,
+      });
+      TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+        handLandmarks: null,
+        faceLandmarks,
+        poseActive: false,
+        mirrored: true,
+        mainCanvas: true,
+      });
     }
 
+    // Draw embers for each active hand
+    for (let h = 0; h < handStates.length; h++) {
+      const hs = handStates[h];
+      if (hs.poseActive && hs.cigTip) {
+        SmokeSystem.drawEmber(
+          ctx,
+          hs.cigTip.x,
+          hs.cigTip.y,
+          canvas.width,
+          canvas.height,
+          SmokeModes.get(),
+          smokeResults[h].state,
+          now
+        );
+      }
+    }
+
+    // Debug info (first hand)
+    const handState = handStates[0];
+    const smokeResult = smokeResults[0] || { state: 'idle', emission: { type: null } };
+    const landmarks = allLandmarks[0] || null;
     const analysis = handState.analysis || HandDetector.getLastAnalysis();
     let debugGap = null;
     let debugScore = null;
@@ -110,6 +149,7 @@
       debugScore = analysis.score != null ? analysis.score.toFixed(3) : null;
     }
     _lastDebug = {
+      hands: allLandmarks.length,
       landmarks: landmarks ? landmarks.length : 0,
       pose: handState.poseActive,
       poseScore: debugScore,
@@ -130,7 +170,7 @@
 
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.font = '14px monospace';
-    ctx.fillText('Landmarks: ' + (_lastDebug.landmarks || 'NO'), 20, 30);
+    ctx.fillText('Hands: ' + (_lastDebug.hands || 0) + ' | Landmarks: ' + (_lastDebug.landmarks || 'NO'), 20, 30);
     ctx.fillText('Pose: ' + (_lastDebug.pose ? 'ACTIVE' : 'inactive'), 20, 50);
     ctx.fillText('State: ' + _lastDebug.state + ' / ' + (_lastDebug.emission || 'none'), 20, 70);
     ctx.fillText('Particles: ' + _lastDebug.particles, 20, 90);

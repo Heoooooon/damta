@@ -117,36 +117,70 @@
     return clamp01((dot(indexVector, middleVector) - 0.55) / 0.45);
   }
 
+  // --- Pinch pose (thumb + index) detection ---
+  function analyzePinchPose(landmarks, width) {
+    // Thumb tip (4) and index tip (8) distance
+    var pinchGap = dist(landmarks[4], landmarks[8]) / width;
+    // Pinch is active when thumb and index tips are close
+    var pinchClose = pinchGap < 0.45;
+    // Check that thumb and index tips are away from the palm center (not just a fist)
+    var thumbDist = dist(landmarks[4], landmarks[0]) / width;
+    var indexDist = dist(landmarks[8], landmarks[0]) / width;
+    var awayFromPalm = thumbDist > 0.5 && indexDist > 0.5;
+    var closeness = clamp01((0.45 - pinchGap) / 0.35);
+    var pinchScore = pinchClose && awayFromPalm
+      ? closeness * 0.7 + clamp01(thumbDist - 0.5) * 0.15 + clamp01(indexDist - 0.5) * 0.15
+      : 0;
+    var isPinch = pinchClose && awayFromPalm && pinchScore >= 0.35;
+    return { isPinch: isPinch, pinchScore: pinchScore, pinchGap: pinchGap };
+  }
+
+  function computePinchTipPosition(landmarks) {
+    // Tip is at the pinch point (midpoint of thumb tip and index tip)
+    var pinchPoint = midpoint(landmarks[4], landmarks[8]);
+    // Guide from knuckles
+    var guideMid = midpoint(landmarks[3], landmarks[6]);
+    var width = palmWidth(landmarks);
+    var emberDir = normalizeVector(
+      pinchPoint.x - guideMid.x,
+      pinchPoint.y - guideMid.y
+    );
+    var fingerGap = dist(landmarks[4], landmarks[8]);
+    var extension = Math.min(
+      width * 0.22,
+      Math.max(width * 0.12, fingerGap * 0.6)
+    );
+    return {
+      x: pinchPoint.x + emberDir.x * extension,
+      y: pinchPoint.y + emberDir.y * extension,
+    };
+  }
+
   function analyzeHandPose(landmarks, options) {
     const config = Object.assign({}, DEFAULT_HAND_OPTIONS, options);
 
+    var emptyResult = {
+      isPose: false,
+      score: 0,
+      gapRatio: 0,
+      indexExtendedScore: 0,
+      middleExtendedScore: 0,
+      ringRelaxedScore: 0,
+      pinkyRelaxedScore: 0,
+      parallelScore: 0,
+      poseType: null,
+    };
+
     if (!isValidLandmarks(landmarks)) {
-      return {
-        isPose: false,
-        score: 0,
-        gapRatio: 0,
-        indexExtendedScore: 0,
-        middleExtendedScore: 0,
-        ringRelaxedScore: 0,
-        pinkyRelaxedScore: 0,
-        parallelScore: 0,
-      };
+      return emptyResult;
     }
 
     const width = palmWidth(landmarks);
     if (!width) {
-      return {
-        isPose: false,
-        score: 0,
-        gapRatio: 0,
-        indexExtendedScore: 0,
-        middleExtendedScore: 0,
-        ringRelaxedScore: 0,
-        pinkyRelaxedScore: 0,
-        parallelScore: 0,
-      };
+      return emptyResult;
     }
 
+    // --- V-pose (index + middle) ---
     const gapRatio = dist(landmarks[8], landmarks[12]) / width;
     const indexExtendedScore = extensionScore(landmarks, 8, 6);
     const middleExtendedScore = extensionScore(landmarks, 12, 10);
@@ -167,7 +201,7 @@
       middleExtendedScore >= 0.72 &&
       directionScore >= 0.82;
 
-    const score =
+    const vScore =
       shapeScore * 0.38 +
       indexExtendedScore * 0.21 +
       middleExtendedScore * 0.21 +
@@ -175,15 +209,25 @@
       ringRelaxedScore * 0.03 +
       pinkyRelaxedScore * 0.03;
 
-    const hasRequiredShape =
+    const hasVShape =
       gapRatio >= config.gapMin &&
       indexExtendedScore >= 0.55 &&
       middleExtendedScore >= 0.55 &&
       directionScore >= 0.45 &&
       (gapRatio <= config.gapMax || wideGapEligible);
 
+    const vPose = hasVShape && vScore >= config.onThreshold;
+
+    // --- Pinch pose (thumb + index) ---
+    const pinch = analyzePinchPose(landmarks, width);
+
+    // Pick the better pose
+    const isPose = vPose || pinch.isPinch;
+    const poseType = vPose ? 'v' : pinch.isPinch ? 'pinch' : null;
+    const score = vPose ? vScore : pinch.isPinch ? pinch.pinchScore : Math.max(vScore, pinch.pinchScore);
+
     return {
-      isPose: hasRequiredShape && score >= config.onThreshold,
+      isPose,
       score,
       gapRatio,
       indexExtendedScore,
@@ -191,10 +235,16 @@
       ringRelaxedScore,
       pinkyRelaxedScore,
       parallelScore: directionScore,
+      poseType,
+      pinchGap: pinch.pinchGap,
     };
   }
 
-  function computeCigaretteTipPosition(landmarks) {
+  function computeCigaretteTipPosition(landmarks, poseType) {
+    if (poseType === 'pinch') {
+      return computePinchTipPosition(landmarks);
+    }
+    // Default: V-pose (index + middle)
     const tipMid = midpoint(landmarks[8], landmarks[12]);
     const guideMid = midpoint(landmarks[6], landmarks[10]);
     const width = palmWidth(landmarks);
@@ -247,24 +297,27 @@
           poseActive = true;
         }
       } else if (
-        lastAnalysis.score <= config.offThreshold ||
-        lastAnalysis.gapRatio < config.gapMin * 0.6 ||
-        lastAnalysis.gapRatio > config.wideGapMax * 1.15
+        lastAnalysis.score <= config.offThreshold &&
+        // Don't use V-pose gapRatio to kill a pinch pose
+        !lastAnalysis.poseType
       ) {
         detectStreak = 0;
         lostStreak += 1;
         if (lostStreak >= config.lostFrames) {
           poseActive = false;
         }
-      } else {
+      } else if (!lastAnalysis.isPose) {
         detectStreak = 0;
-        lostStreak = 0;
+        lostStreak += 1;
+        if (lostStreak >= config.lostFrames) {
+          poseActive = false;
+        }
       }
 
       return {
         poseActive,
         poseScore: lastAnalysis.score,
-        cigTip: poseActive ? computeCigaretteTipPosition(landmarks) : null,
+        cigTip: poseActive ? computeCigaretteTipPosition(landmarks, lastAnalysis.poseType) : null,
         analysis: lastAnalysis,
       };
     }
