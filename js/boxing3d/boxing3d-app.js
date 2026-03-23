@@ -32,20 +32,57 @@
   BoxingEffects3D.init(BoxingScene.getScene(), BoxingScene.getCamera());
   window.addEventListener('resize', BoxingScene.resize);
 
-  // --- 주먹 글로우 (3D 씬 내 표시) ---
-  var fistGlows = [];
-  var glowMat = new THREE.MeshBasicMaterial({
+  // --- 3D 손 스켈레톤 ---
+  // MediaPipe 21개 랜드마크 연결 구조
+  var HAND_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],       // 엄지
+    [0,5],[5,6],[6,7],[7,8],       // 검지
+    [5,9],[9,10],[10,11],[11,12],   // 중지
+    [9,13],[13,14],[14,15],[15,16], // 약지
+    [13,17],[17,18],[18,19],[19,20],// 소지
+    [0,17]                          // 손바닥 닫기
+  ];
+
+  var handSkeletons = []; // 손당 {joints: [Mesh], bones: [Line], group: Group}
+
+  var jointMat = new THREE.MeshBasicMaterial({
     color: 0x44aaff,
     transparent: true,
-    opacity: 0.4,
+    opacity: 0.7,
     depthWrite: false
   });
-  for (var g = 0; g < 2; g++) {
-    var glowGeo = new THREE.SphereGeometry(0.08, 16, 16);
-    var glowMesh = new THREE.Mesh(glowGeo, glowMat);
-    glowMesh.visible = false;
-    BoxingScene.getScene().add(glowMesh);
-    fistGlows.push(glowMesh);
+  var boneMat = new THREE.LineBasicMaterial({
+    color: 0x44aaff,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false
+  });
+
+  for (var h = 0; h < 2; h++) {
+    var skelGroup = new THREE.Group();
+    skelGroup.visible = false;
+    var joints = [];
+    var bones = [];
+
+    // 21개 관절 구체
+    for (var j = 0; j < 21; j++) {
+      var jGeo = new THREE.SphereGeometry(0.02, 8, 8);
+      var jMesh = new THREE.Mesh(jGeo, jointMat);
+      skelGroup.add(jMesh);
+      joints.push(jMesh);
+    }
+
+    // 연결 라인
+    for (var c = 0; c < HAND_CONNECTIONS.length; c++) {
+      var lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute([0,0,0, 0,0,0], 3));
+      var line = new THREE.Line(lineGeo, boneMat);
+      skelGroup.add(line);
+      bones.push(line);
+    }
+
+    BoxingScene.getScene().add(skelGroup);
+    handSkeletons.push({ joints: joints, bones: bones, group: skelGroup });
   }
 
   // --- State ---
@@ -185,25 +222,51 @@
     timerFill.style.width = pct + '%';
   }
 
-  // --- 주먹 위치 → 3D 글로우 좌표 ---
-  function updateFistGlow(index, nx, ny, visible) {
-    var glow = fistGlows[index];
-    if (!glow) return;
-    if (!visible) {
-      glow.visible = false;
+  // --- 랜드마크 → 3D 좌표 변환 ---
+  function landmarkTo3D(lm) {
+    // 정규화 좌표 → 3D 공간 (미러링 포함)
+    var x = (1 - lm.x - 0.5) * 4.0;
+    var y = (1 - lm.y) * 3.0;
+    var z = 2.0 - (lm.z || 0) * 2.0; // z는 손목 기준 상대 깊이
+    return { x: x, y: y, z: z };
+  }
+
+  // --- 3D 손 스켈레톤 업데이트 ---
+  function updateHandSkeleton(handIndex, landmarks) {
+    var skel = handSkeletons[handIndex];
+    if (!skel) return;
+
+    if (!landmarks) {
+      skel.group.visible = false;
       return;
     }
-    glow.position.x = (nx - 0.5) * 4.0;
-    glow.position.y = (1 - ny) * 3.0;
-    glow.position.z = 2.0;
-    glow.visible = true;
+
+    skel.group.visible = true;
+
+    // 관절 위치 갱신
+    for (var j = 0; j < 21; j++) {
+      var pos3d = landmarkTo3D(landmarks[j]);
+      skel.joints[j].position.set(pos3d.x, pos3d.y, pos3d.z);
+    }
+
+    // 뼈대 라인 갱신
+    for (var c = 0; c < HAND_CONNECTIONS.length; c++) {
+      var conn = HAND_CONNECTIONS[c];
+      var p1 = skel.joints[conn[0]].position;
+      var p2 = skel.joints[conn[1]].position;
+      var posAttr = skel.bones[c].geometry.attributes.position;
+      posAttr.setXYZ(0, p1.x, p1.y, p1.z);
+      posAttr.setXYZ(1, p2.x, p2.y, p2.z);
+      posAttr.needsUpdate = true;
+    }
   }
 
   // --- Hand detection ---
   function detectHands(now) {
     if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
-      for (var g = 0; g < fistGlows.length; g++) {
-        fistGlows[g].visible = false;
+      // 손 없으면 스켈레톤 숨기기
+      for (var s = 0; s < handSkeletons.length; s++) {
+        handSkeletons[s].group.visible = false;
       }
 
       if (state === 'round' && now - lastHandDetectedTime > 5000 && !noHandWarningShown) {
@@ -223,18 +286,19 @@
 
     for (var i = 0; i < multiHandLandmarks.length && i < 2; i++) {
       var landmarks = multiHandLandmarks[i];
+
+      // 3D 손 스켈레톤 항상 업데이트
+      updateHandSkeleton(i, landmarks);
+
       var fistState = BoxingDetection.isFist(landmarks);
 
       if (!fistState) {
         punchTrackers[i] = null;
-        updateFistGlow(i, 0, 0, false);
         continue;
       }
 
       var pos = BoxingDetection.getFistPosition(landmarks);
       pos.x = 1 - pos.x; // Mirror X
-
-      updateFistGlow(i, pos.x, pos.y, true);
 
       if (!punchTrackers[i]) {
         punchTrackers[i] = BoxingDetection.createPunchTracker();
@@ -259,9 +323,9 @@
       }
     }
 
-    // 감지되지 않은 손의 글로우 숨기기
-    for (var g = multiHandLandmarks.length; g < 2; g++) {
-      updateFistGlow(g, 0, 0, false);
+    // 감지되지 않은 손의 스켈레톤 숨기기
+    for (var s = multiHandLandmarks.length; s < 2; s++) {
+      updateHandSkeleton(s, null);
     }
   }
 
