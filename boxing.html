@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boxing Sandbag</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: -apple-system, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+    }
+
+    #boxingCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #webcam {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 160px;
+      height: 120px;
+      border-radius: 8px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 10;
+    }
+
+    #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      text-align: center;
+      white-space: pre-line;
+      z-index: 20;
+    }
+
+    .nav-back {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255, 255, 255, 0.5);
+      text-decoration: none;
+      font-size: 14px;
+      z-index: 10;
+      transition: color 0.2s;
+    }
+
+    .nav-back:hover {
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* HUD */
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 15;
+      pointer-events: none;
+    }
+
+    #hud.hidden { display: none; }
+
+    .hud-top {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 32px;
+      padding: 16px 24px 8px;
+    }
+
+    .hud-stat {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .hud-stat-label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      font-weight: 400;
+      display: block;
+      margin-top: 2px;
+    }
+
+    .timer-bar {
+      width: 200px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 2px;
+      margin: 8px auto 0;
+      overflow: hidden;
+    }
+
+    .timer-fill {
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 2px;
+      width: 100%;
+      transition: width 0.3s linear;
+    }
+
+    .hud-bottom-right {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 15;
+      pointer-events: none;
+    }
+
+    /* No-hand warning */
+    #noHandWarning {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px 20px;
+      border-radius: 8px;
+      z-index: 15;
+    }
+
+    #noHandWarning.hidden { display: none; }
+
+    /* Countdown overlay */
+    #countdown {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    #countdown.hidden { display: none; }
+
+    #countdownNumber {
+      font-size: 120px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Guide modal */
+    .guide-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .guide-overlay.hidden { display: none; }
+
+    .guide-modal {
+      background: #fff;
+      border-radius: 20px;
+      width: 340px;
+      padding: 32px 28px 28px;
+      text-align: center;
+      animation: guideIn 0.3s ease-out;
+    }
+
+    @keyframes guideIn {
+      from { opacity: 0; transform: scale(0.95) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .guide-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 16px;
+    }
+
+    .guide-desc {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #666;
+      margin-bottom: 24px;
+    }
+
+    .guide-start {
+      width: 100%;
+      padding: 14px 0;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+
+    .guide-start:hover { background: #333; }
+    .guide-start:active { background: #000; }
+
+    /* Result modal */
+    .result-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .result-overlay.hidden { display: none; }
+
+    .result-modal {
+      background: #fff;
+      border-radius: 20px;
+      width: 340px;
+      padding: 32px 28px 28px;
+      text-align: center;
+      animation: guideIn 0.3s ease-out;
+    }
+
+    .result-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 20px;
+    }
+
+    .result-stats {
+      margin-bottom: 24px;
+    }
+
+    .result-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 15px;
+    }
+
+    .result-stat-label {
+      color: #666;
+    }
+
+    .result-stat-value {
+      color: #1a1a1a;
+      font-weight: 600;
+    }
+
+    .result-retry {
+      width: 100%;
+      padding: 14px 0;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+
+    .result-retry:hover { background: #333; }
+    .result-retry:active { background: #000; }
+  </style>
+</head>
+<body>
+  <canvas id="boxingCanvas"></canvas>
+  <video id="webcam" autoplay playsinline></video>
+  <div id="error" hidden></div>
+
+  <!-- Navigation -->
+  <a class="nav-back" href="index.html">&larr; 담타</a>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-stat"><span id="hudTimer">00:30</span><span class="hud-stat-label">타이머</span></div>
+      <div class="hud-stat"><span id="hudHits">0</span><span class="hud-stat-label">타격</span></div>
+      <div class="hud-stat"><span id="hudStrong">0</span><span class="hud-stat-label">강타</span></div>
+    </div>
+    <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+    <div class="hud-bottom-right"><span id="hudHPM">0</span> hits/min</div>
+  </div>
+
+  <!-- No-hand warning -->
+  <div id="noHandWarning" class="hidden">주먹을 카메라에 보여주세요</div>
+
+  <!-- Countdown overlay -->
+  <div id="countdown" class="hidden"><span id="countdownNumber"></span></div>
+
+  <!-- Guide modal -->
+  <div id="guideModal" class="guide-overlay">
+    <div class="guide-modal">
+      <h2 class="guide-title">샌드백 연습을 시작할까요?</h2>
+      <p class="guide-desc">
+        카메라 앞에서 주먹을 쥐고 샌드백을 향해 펀치하세요.<br>
+        30초 동안 최대한 많이 타격해보세요!
+      </p>
+      <button class="guide-start" id="guideStart">시작</button>
+    </div>
+  </div>
+
+  <!-- Result modal -->
+  <div id="resultModal" class="result-overlay hidden">
+    <div class="result-modal">
+      <h2 class="result-title">라운드 종료!</h2>
+      <div class="result-stats">
+        <div class="result-stat">
+          <span class="result-stat-label">총 타격</span>
+          <span class="result-stat-value" id="resultHits">0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-label">강타</span>
+          <span class="result-stat-value" id="resultStrong">0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-label">타격 속도</span>
+          <span class="result-stat-value"><span id="resultHPM">0</span> hits/min</span>
+        </div>
+      </div>
+      <button class="result-retry" id="resultRetry">다시 하기</button>
+    </div>
+  </div>
+
+  <!-- CDN Dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+
+  <!-- App scripts -->
+  <script src="js/noise.js"></script>
+  <script src="js/boxing/boxing-detection.js"></script>
+  <script src="js/boxing/boxing-sandbag.js"></script>
+  <script src="js/boxing/boxing-effects.js"></script>
+  <script src="js/boxing/boxing-app.js"></script>
+</body>
+</html>
