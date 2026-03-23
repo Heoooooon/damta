@@ -28,7 +28,25 @@ boxing-3d.html
 
 ### 재사용 모듈
 - `boxing-detection.js` — 100% 재사용 (주먹 감지, 속도 추적, 히트 판정)
-- `noise.js` — 파티클 움직임에 활용
+- `noise.js` — 파티클 방향 교란에 활용 (매 프레임 position attribute 갱신 시 noise offset 추가)
+
+### 모듈 패턴
+- 모든 3D 모듈은 IIFE + `window` 할당 패턴 (기존 `boxing-sandbag.js`와 동일)
+- 브라우저 전용, `node --test` 불가
+- 모듈 내부 상태는 IIFE 클로저 변수로 관리
+
+### 기존 2D API와의 차이점
+| | 2D (`boxing-sandbag.js`) | 3D (`boxing3d-sandbag.js`) |
+|---|---|---|
+| `update()` | 파라미터 없음 (프레임 고정) | `update(dt)` — dt 기반 물리 |
+| `draw()` | `draw(ctx, w, h)` Canvas 2D context | 불필요 (Three.js 자동 렌더) |
+| `reset()` | `reset()` | `reset()` |
+
+| | 2D (`boxing-effects.js`) | 3D (`boxing3d-effects.js`) |
+|---|---|---|
+| `update()` | `update(ctx, dt)` Canvas 2D context | `update(dt)` — context 불필요 |
+| `emit()` | `emit(x, y, power)` 캔버스 좌표 | `emit(x, y, power)` 정규화 좌표 → 내부 3D 변환 |
+| `reset()` | `reset()` | `reset()` |
 
 ## Module Design
 
@@ -78,7 +96,8 @@ window.BoxingScene = {
 - 전체를 `Group`으로 묶어 회전 적용
 
 **물리:**
-- 기존 감쇠 진자 로직 재사용 (STIFFNESS: 0.08, DAMPING: 0.95, MAX_ANGLE: 0.35)
+- 감쇠 진자 로직 (기존과 동일한 상수: STIFFNESS: 0.08, DAMPING: 0.95, MAX_ANGLE: 0.35)
+- dt 기반 물리: `dtRatio = dt / 16.67` (60fps 기준 정규화), 각속도/복원력에 dtRatio 적용
 - 3D에서는 `group.rotation.z`로 스윙 표현 (X축 방향 흔들림)
 - pivot point: 체인 상단 (천장 연결점)
 
@@ -93,7 +112,7 @@ window.BoxingSandbag3D = {
   init(scene) → group,
   update(dt),
   applyHit(power, hitX),
-  draw()  // no-op, Three.js가 자동 렌더링
+  reset()  // 각도/속도 초기화, flash 리셋
 }
 ```
 
@@ -118,7 +137,7 @@ window.BoxingSandbag3D = {
 - 크기: 0.03~0.07
 - 수명: 500ms
 - 색상: 오렌지/빨강 (`0xff6600`, `0xff2200`)
-- 충격파: `RingGeometry` + `MeshBasicMaterial` (transparent, opacity 감쇠, scale 애니메이션 5→60 비율)
+- 충격파: `RingGeometry` + `MeshBasicMaterial` (transparent, opacity 감쇠, scale 애니메이션 0.05→0.6 in 3D units)
 
 **파티클 물리:**
 - 중력: y -= 0.15 * dtRatio
@@ -130,12 +149,17 @@ window.BoxingSandbag3D = {
 - shakeAmount *= 0.85로 감쇠
 - 강타: 0.08 offset, 일반: 0.03 offset
 
+**파티클 Material 설정:**
+- `PointsMaterial` with `transparent: true`, `depthWrite: false`, `blending: THREE.AdditiveBlending`
+- 파티클 겹침 시 렌더링 아티팩트 방지
+
 **API:**
 ```javascript
 window.BoxingEffects3D = {
   init(scene, camera),
   emit(x, y, power),  // 정규화 좌표 → 3D 좌표 변환 내부 처리
-  update(dt)
+  update(dt),
+  reset()  // 모든 파티클 제거, 셰이크 리셋
 }
 ```
 
@@ -162,16 +186,24 @@ window.BoxingEffects3D = {
 - 기존과 동일: 우상단 160x120px `<video>` 요소
 
 **손 시각화:**
-- 3D 씬 내에서 손 위치에 작은 `SphereGeometry` 표시 (주먹 쥔 상태일 때)
-- 또는 Canvas 2D 오버레이로 기존 방식 유지 (간단함 우선)
+- 3D 씬 내에서 주먹 위치에 `SphereGeometry` (radius: 0.08, 반투명 글로우) 표시
+- 주먹 쥔 상태일 때만 visible, 아닐 때 hidden
+- 정규화 좌표 → 3D 좌표 변환하여 위치 갱신
 
 ## Coordinate Mapping
 
-- MediaPipe 정규화 좌표 (0~1) → 히트 판정: 기존 `boxing-detection.js` 로직 그대로
-- 타격 위치 → 3D 파티클 emit 위치:
-  - x: `(1 - landmark.x) * sandbagWidth - sandbagWidth/2` → 샌드백 표면 좌표
-  - y: `(1 - landmark.y) * sandbagHeight` → 샌드백 높이 좌표
-  - z: 샌드백 표면 (radius 값)
+**히트 판정:** 기존 `boxing-detection.js` 로직 그대로 (정규화 좌표 0~1 기반, hitbox `{x:0.5, y:0.45, halfW:0.1, halfH:0.25}` 변경 없음)
+
+**타격 위치 → 3D 파티클 emit 위치:**
+- 샌드백 모델 파라미터: radius=0.3, height=1.2, 중심 y=1.0 (바닥에서 1m)
+- x: `(1 - landmark.x - 0.5) * 0.6` → 샌드백 표면 범위 (-0.3 ~ 0.3)
+- y: `(1 - landmark.y) * 1.2 + 0.4` → 샌드백 높이 범위 (0.4 ~ 1.6)
+- z: `0.3` (샌드백 전면 표면 = radius)
+
+**손 위치 → 3D 글로우 위치:**
+- x: `(1 - landmark.x - 0.5) * 4.0` → 카메라 시야각 대응 (-2 ~ 2)
+- y: `(1 - landmark.y) * 3.0` → 높이 범위 (0 ~ 3)
+- z: `2.0` (카메라 앞, 샌드백과 카메라 사이)
 
 ## CDN Dependencies
 
