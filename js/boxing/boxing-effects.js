@@ -115,7 +115,6 @@
       shakeAmount = 0;
     }
 
-    var dtSec = dt / 1000;
     var dtRatio = dt / 16.667; // normalize to ~60fps step
 
     // Update and render particles

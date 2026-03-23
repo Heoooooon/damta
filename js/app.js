@@ -260,7 +260,18 @@
     modeBtn.textContent = mode.name;
   });
 
-  init();
+  // Guide modal — start app only after user clicks
+  const guideModal = document.getElementById('guideModal');
+  const guideStart = document.getElementById('guideStart');
+  const guideClose = document.getElementById('guideClose');
+
+  function dismissGuide() {
+    guideModal.classList.add('hidden');
+    init();
+  }
+
+  guideStart.addEventListener('click', dismissGuide);
+  guideClose.addEventListener('click', dismissGuide);
 
   // Export for other modules
   window.APP = { canvas, ctx, video };

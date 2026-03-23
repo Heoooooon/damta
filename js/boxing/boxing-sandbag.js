@@ -19,7 +19,7 @@
     flash = 1;
   }
 
-  function update(dt) {
+  function update() {
     var restoring = -STIFFNESS * angle;
     angularVelocity += restoring;
     angularVelocity *= DAMPING;
