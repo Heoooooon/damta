@@ -112,6 +112,7 @@ window.BoxingSandbag3D = {
   init(scene) → group,
   update(dt),
   applyHit(power, hitX),
+  getHitbox() → {x, y, halfW, halfH},  // boxing-detection.js와 동일한 hitbox
   reset()  // 각도/속도 초기화, flash 리셋
 }
 ```
@@ -196,8 +197,9 @@ window.BoxingEffects3D = {
 
 **타격 위치 → 3D 파티클 emit 위치:**
 - 샌드백 모델 파라미터: radius=0.3, height=1.2, 중심 y=1.0 (바닥에서 1m)
-- x: `(1 - landmark.x - 0.5) * 0.6` → 샌드백 표면 범위 (-0.3 ~ 0.3)
-- y: `(1 - landmark.y) * 1.2 + 0.4` → 샌드백 높이 범위 (0.4 ~ 1.6)
+- 주의: app에서 `pos.x = 1 - pos.x`로 미러링 후 emit하므로, effects 내부에서는 추가 미러링 불필요
+- x: `(nx - 0.5) * 0.6` → 샌드백 표면 범위 (-0.3 ~ 0.3)
+- y: `(1 - ny) * 1.2 + 0.4` → 샌드백 높이 범위 (0.4 ~ 1.6)
 - z: `0.3` (샌드백 전면 표면 = radius)
 
 **손 위치 → 3D 글로우 위치:**
