@@ -347,10 +347,13 @@
     let cooldownUntil = 0;
     let lastMouth = null;
     let exhaleDirection = null;
+    let inhaleAccumulated = 0;
+    let exhaleStrength = 1;
 
     function resetInhale() {
       inhaleStartTime = 0;
       inhaleAnchorTip = null;
+      inhaleAccumulated = 0;
     }
 
     function update(input, now) {
@@ -374,10 +377,11 @@
               Math.max(1, config.exhaleHoldDuration - config.exhaleBurstDuration)
           );
 
+          const baseStr = emissionType === 'exhale-burst' ? 1 : 0.82;
           const em = createEmission(
             emissionType,
             progress,
-            emissionType === 'exhale-burst' ? 1 : 0.82
+            baseStr * exhaleStrength
           );
           em.direction = exhaleDirection;
           return {
@@ -431,6 +435,8 @@
         }
 
         smokeState = 'inhaling';
+        // 흡입량 누적 (프레임당 ~16ms 기준)
+        inhaleAccumulated = clamp01(inhaleAccumulated + 0.02);
         // cigTip → mouth 방향 (빨려들어가는 방향)
         var inhaleDir = null;
         if (cigTip && mouth) {
@@ -473,6 +479,8 @@
           smokeState = 'exhaling';
           exhaleStartTime = now;
           nearMouth = false;
+          // 흡입량 → 배출 강도 (0.3~1.0, 짧게 빨면 약하게)
+          exhaleStrength = Math.max(0.3, inhaleAccumulated);
           resetInhale();
 
           // 배출 방향: mouth → cigTip
@@ -486,7 +494,7 @@
             }
           }
 
-          const burstEm = createEmission('exhale-burst');
+          const burstEm = createEmission('exhale-burst', 0, exhaleStrength);
           burstEm.direction = exhaleDirection;
           return {
             state: 'exhaling',
