@@ -199,8 +199,26 @@ const SmokeSystem = (function () {
 
       p.x = cx + (Math.random() - 0.5) * profile.spreadX;
       p.y = cy + (Math.random() - 0.5) * profile.spreadY;
-      p.vx = (Math.random() - 0.5) * profile.velocityX;
-      p.vy = profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min);
+
+      var dir = emission && emission.direction;
+      if (dir) {
+        // 방향성 속도: direction 기반 + cone spread
+        var bias = 0.7;
+        if (emission.type === 'exhale-stream') {
+          bias = 0.7 - (emission.progress || 0) * 0.4;
+        }
+        var speed = Math.abs(profile.velocityY.min) * 1.2;
+        var coneAngle = (Math.random() - 0.5) * 0.7;
+        var cosA = Math.cos(coneAngle);
+        var sinA = Math.sin(coneAngle);
+        var rotX = dir.x * cosA - dir.y * sinA;
+        var rotY = dir.x * sinA + dir.y * cosA;
+        p.vx = rotX * speed * bias + (Math.random() - 0.5) * profile.velocityX * (1 - bias);
+        p.vy = rotY * speed * bias + (profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min)) * (1 - bias);
+      } else {
+        p.vx = (Math.random() - 0.5) * profile.velocityX;
+        p.vy = profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min);
+      }
       p.originX = p.x;
       p.originY = p.y;
 
