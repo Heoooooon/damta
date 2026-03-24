@@ -9,6 +9,16 @@
     InteractionCore.createSmokeStateMachine(),
     InteractionCore.createSmokeStateMachine(),
   ];
+  // 손별 위치 스무더 + 예측기
+  const cigTipSmoothers = [
+    TrackingSmoother.createPositionSmoother({ alpha: 0.4, deadzone: 0.003 }),
+    TrackingSmoother.createPositionSmoother({ alpha: 0.4, deadzone: 0.003 }),
+  ];
+  const cigTipPredictors = [
+    TrackingSmoother.createVelocityPredictor({ maxPredictMs: 120, velocityAlpha: 0.5 }),
+    TrackingSmoother.createVelocityPredictor({ maxPredictMs: 120, velocityAlpha: 0.5 }),
+  ];
+  const mouthSmoother = TrackingSmoother.createPositionSmoother({ alpha: 0.35, deadzone: 0.002 });
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -40,18 +50,36 @@
     const handStates = HandDetector.updateAll();
     const allLandmarks = HandDetector.getAllLandmarks();
     const mouth = FaceDetector.getMouth();
+    const mouthSmoothed = mouth ? mouthSmoother.update(mouth) : null;
+    if (!mouth) mouthSmoother.reset();
     const faceH = FaceDetector.getFaceHeight();
     const faceLandmarks = FaceDetector.getLandmarks();
 
     const now = performance.now();
     let anyActive = false;
     const smokeResults = [];
+    const smoothedTips = [];
     for (let h = 0; h < handStates.length; h++) {
       const handState = handStates[h];
+
+      // cigTip 스무딩 + 예측
+      let smoothedTip = null;
+      if (handState.cigTip) {
+        smoothedTip = cigTipSmoothers[h].update(handState.cigTip);
+        cigTipPredictors[h].feed(smoothedTip, now);
+      } else {
+        smoothedTip = cigTipPredictors[h].predict(now);
+        if (!smoothedTip) {
+          cigTipSmoothers[h].reset();
+          cigTipPredictors[h].reset();
+        }
+      }
+      smoothedTips.push(smoothedTip);
+
       const smokeResult = smokeStateMachines[h].update({
-        poseActive: handState.poseActive,
-        cigTip: handState.cigTip,
-        mouth,
+        poseActive: handState.poseActive || !!smoothedTip,
+        cigTip: smoothedTip,
+        mouth: mouthSmoothed,
         faceHeight: faceH,
       }, now);
       smokeResults.push(smokeResult);
@@ -112,11 +140,12 @@
     // Draw embers for each active hand
     for (let h = 0; h < handStates.length; h++) {
       const hs = handStates[h];
-      if (hs.poseActive && hs.cigTip) {
+      const tip = smoothedTips[h];
+      if ((hs.poseActive || tip) && tip) {
         SmokeSystem.drawEmber(
           ctx,
-          hs.cigTip.x,
-          hs.cigTip.y,
+          tip.x,
+          tip.y,
           canvas.width,
           canvas.height,
           SmokeModes.get(),
