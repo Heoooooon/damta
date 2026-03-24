@@ -99,3 +99,53 @@ describe('createVelocityPredictor', () => {
     assert.equal(p.predict(200), null);
   });
 });
+
+describe('createConfidenceGate', () => {
+  it('starts in pending status', () => {
+    const g = TrackingSmoother.createConfidenceGate({ detectFrames: 2, lostFrames: 3 });
+    const result = g.update({ x: 0.5, y: 0.5 });
+    assert.equal(result.status, 'pending');
+  });
+
+  it('becomes active after detectFrames consecutive inputs', () => {
+    const g = TrackingSmoother.createConfidenceGate({ detectFrames: 2, lostFrames: 3 });
+    g.update({ x: 0.5, y: 0.5 });
+    const result = g.update({ x: 0.51, y: 0.5 });
+    assert.equal(result.status, 'active');
+  });
+
+  it('filters jumps exceeding maxJump', () => {
+    const g = TrackingSmoother.createConfidenceGate({ maxJump: 0.15, detectFrames: 1, lostFrames: 3 });
+    g.update({ x: 0.5, y: 0.5 });
+    const result = g.update({ x: 0.9, y: 0.5 }); // jump 0.4 > 0.15
+    assert.ok(Math.abs(result.position.x - 0.5) < 1e-9);
+  });
+
+  it('becomes lost after lostFrames consecutive nulls', () => {
+    const g = TrackingSmoother.createConfidenceGate({ detectFrames: 1, lostFrames: 3 });
+    g.update({ x: 0.5, y: 0.5 });  // active
+    g.update(null);  // lost streak 1
+    g.update(null);  // lost streak 2
+    const result = g.update(null);  // lost streak 3
+    assert.equal(result.status, 'lost');
+  });
+
+  it('recovers from lost to active', () => {
+    const g = TrackingSmoother.createConfidenceGate({ detectFrames: 2, lostFrames: 1 });
+    g.update({ x: 0.5, y: 0.5 });
+    g.update({ x: 0.51, y: 0.5 }); // active
+    g.update(null); // lost
+    g.update({ x: 0.6, y: 0.5 }); // pending
+    const result = g.update({ x: 0.61, y: 0.5 }); // active again
+    assert.equal(result.status, 'active');
+  });
+
+  it('resets state', () => {
+    const g = TrackingSmoother.createConfidenceGate({ detectFrames: 2, lostFrames: 3 });
+    g.update({ x: 0.5, y: 0.5 });
+    g.update({ x: 0.51, y: 0.5 }); // active
+    g.reset();
+    const result = g.update({ x: 0.6, y: 0.6 });
+    assert.equal(result.status, 'pending');
+  });
+});

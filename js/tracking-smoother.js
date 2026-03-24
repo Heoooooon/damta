@@ -94,8 +94,62 @@
     return { feed: feed, predict: predict, reset: reset };
   }
 
+  function createConfidenceGate(options) {
+    var maxJump = (options && options.maxJump) || 0.15;
+    var detectFrames = (options && options.detectFrames) || 2;
+    var lostFrames = (options && options.lostFrames) || 3;
+    var prev = null;
+    var detectStreak = 0;
+    var lostStreak = 0;
+    var status = 'pending';
+
+    function update(pos) {
+      if (!pos) {
+        detectStreak = 0;
+        lostStreak++;
+        if (lostStreak >= lostFrames) {
+          status = 'lost';
+        }
+        return { position: prev, status: status };
+      }
+
+      lostStreak = 0;
+
+      // 점프 필터
+      if (prev) {
+        var dx = pos.x - prev.x;
+        var dy = pos.y - prev.y;
+        var jump = Math.sqrt(dx * dx + dy * dy);
+        if (jump > maxJump) {
+          return { position: { x: prev.x, y: prev.y }, status: status };
+        }
+      }
+
+      prev = { x: pos.x, y: pos.y };
+      detectStreak++;
+
+      if (detectStreak >= detectFrames) {
+        status = 'active';
+      } else if (status === 'lost') {
+        status = 'pending';
+      }
+
+      return { position: { x: prev.x, y: prev.y }, status: status };
+    }
+
+    function reset() {
+      prev = null;
+      detectStreak = 0;
+      lostStreak = 0;
+      status = 'pending';
+    }
+
+    return { update: update, reset: reset };
+  }
+
   return {
     createPositionSmoother: createPositionSmoother,
     createVelocityPredictor: createVelocityPredictor,
+    createConfidenceGate: createConfidenceGate,
   };
 });
