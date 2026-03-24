@@ -203,12 +203,13 @@ const SmokeSystem = (function () {
       var dir = emission && emission.direction;
       if (dir) {
         // 방향성 속도: direction 기반 + cone spread
-        var bias = 0.7;
+        var isInhaling = !!(emission && emission.inhaling);
+        var bias = isInhaling ? 0.9 : 0.7;
         if (emission.type === 'exhale-stream') {
           bias = 0.7 - (emission.progress || 0) * 0.4;
         }
-        var speed = Math.abs(profile.velocityY.min) * 1.2;
-        var coneAngle = (Math.random() - 0.5) * 0.7;
+        var speed = Math.abs(profile.velocityY.min) * (isInhaling ? 1.8 : 1.2);
+        var coneAngle = (Math.random() - 0.5) * (isInhaling ? 0.3 : 0.7);
         var cosA = Math.cos(coneAngle);
         var sinA = Math.sin(coneAngle);
         var rotX = dir.x * cosA - dir.y * sinA;
@@ -339,20 +340,27 @@ const SmokeSystem = (function () {
         p.alpha *= pulse;
       }
 
-      // 흡입력: inhaling 중이면 mouth 방향으로 끌어당김
+      // 흡입력: inhaling 중이면 mouth 방향으로 강하게 끌어당김
       if (inMouth) {
         const adx = inMouth.x - p.x;
         const ady = inMouth.y - p.y;
         const adist = Math.sqrt(adx * adx + ady * ady);
         if (adist > 1) {
-          const strength = 0.15 * Math.min(1, 80 / adist);
+          // 거리에 반비례하는 강한 흡입력
+          const proximity = Math.min(1, 120 / adist);
+          const strength = 0.35 * proximity * proximity;
           p.vx += (adx / adist) * strength * step;
           p.vy += (ady / adist) * strength * step;
-          p.life += dt * 0.8;
-          p.growTo *= 0.992;
-          p.size *= 0.992;
+          // 기존 속도를 mouth 방향으로 정렬 (저항 감소)
+          p.vx *= 0.92;
+          p.vy *= 0.92;
+          // 가까울수록 빠르게 축소 + 소멸
+          const shrink = 0.96 - proximity * 0.06;
+          p.growTo *= shrink;
+          p.size *= shrink;
+          p.life += dt * (0.5 + proximity * 1.5);
         }
-        if (adist < 12) {
+        if (adist < 18) {
           p.life = p.maxLife;
         }
       }

@@ -431,11 +431,24 @@
         }
 
         smokeState = 'inhaling';
+        // cigTip → mouth 방향 (빨려들어가는 방향)
+        var inhaleDir = null;
+        if (cigTip && mouth) {
+          var idx = mouth.x - cigTip.x;
+          var idy = mouth.y - cigTip.y;
+          var ilen = Math.hypot(idx, idy);
+          if (ilen > 0.001) {
+            inhaleDir = { x: idx / ilen, y: idy / ilen };
+          }
+        }
+        var inhaleEm = createEmission('fingertip', 0, 0.35);
+        inhaleEm.direction = inhaleDir;
+        inhaleEm.inhaling = true;
         return {
           state: 'inhaling',
           emitPos: cigTip,
           isExhale: false,
-          emission: createEmission('fingertip', 0, 0.3),
+          emission: inhaleEm,
           inhalingMouth: mouth,
           tipToMouth,
           thresholds: {
