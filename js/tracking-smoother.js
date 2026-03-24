@@ -50,7 +50,52 @@
     return { update: update, reset: reset };
   }
 
+  function createVelocityPredictor(options) {
+    var maxPredictMs = (options && options.maxPredictMs) || 120;
+    var velocityAlpha = (options && options.velocityAlpha) || 0.5;
+    var lastPos = null;
+    var lastTime = null;
+    var velocity = null;
+
+    function feed(pos, timestampMs) {
+      if (lastPos !== null && lastTime !== null) {
+        var dt = timestampMs - lastTime;
+        if (dt > 0) {
+          var rawVx = (pos.x - lastPos.x) / dt;
+          var rawVy = (pos.y - lastPos.y) / dt;
+          if (velocity === null) {
+            velocity = { x: rawVx, y: rawVy };
+          } else {
+            velocity.x = velocity.x + (rawVx - velocity.x) * velocityAlpha;
+            velocity.y = velocity.y + (rawVy - velocity.y) * velocityAlpha;
+          }
+        }
+      }
+      lastPos = { x: pos.x, y: pos.y };
+      lastTime = timestampMs;
+    }
+
+    function predict(timestampMs) {
+      if (!lastPos || !velocity || lastTime === null) return null;
+      var elapsed = timestampMs - lastTime;
+      if (elapsed > maxPredictMs) return null;
+      return {
+        x: lastPos.x + velocity.x * elapsed,
+        y: lastPos.y + velocity.y * elapsed,
+      };
+    }
+
+    function reset() {
+      lastPos = null;
+      lastTime = null;
+      velocity = null;
+    }
+
+    return { feed: feed, predict: predict, reset: reset };
+  }
+
   return {
     createPositionSmoother: createPositionSmoother,
+    createVelocityPredictor: createVelocityPredictor,
   };
 });
