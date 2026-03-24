@@ -274,6 +274,7 @@ const SmokeSystem = (function () {
       ? Math.min(18, 1 + dormantTime / 120)
       : 1;
     const step = Math.max(0.7, Math.min(2.5, dt / 16.6667));
+    const inMouth = options && options.inhalingMouth;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
 
@@ -336,6 +337,24 @@ const SmokeSystem = (function () {
         p.vy += Math.sin(angle + p.wobbleOffset) * p.mode.swirlStrength * 0.004 * step;
         const pulse = 1 + Math.sin(p.life * 0.005) * 0.15;
         p.alpha *= pulse;
+      }
+
+      // 흡입력: inhaling 중이면 mouth 방향으로 끌어당김
+      if (inMouth) {
+        const adx = inMouth.x - p.x;
+        const ady = inMouth.y - p.y;
+        const adist = Math.sqrt(adx * adx + ady * ady);
+        if (adist > 1) {
+          const strength = 0.15 * Math.min(1, 80 / adist);
+          p.vx += (adx / adist) * strength * step;
+          p.vy += (ady / adist) * strength * step;
+          p.life += dt * 0.8;
+          p.growTo *= 0.992;
+          p.size *= 0.992;
+        }
+        if (adist < 12) {
+          p.life = p.maxLife;
+        }
       }
 
       const prevX = p.x;

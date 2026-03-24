@@ -103,10 +103,23 @@
       if (smokeResult.state !== 'idle') anyActive = true;
     }
 
+    // inhaling 중인 손이 있으면 mouth 캔버스 좌표로 변환
+    let inhalingMouth = null;
+    for (let h = 0; h < smokeResults.length; h++) {
+      if (smokeResults[h].state === 'inhaling' && mouthSmoothed) {
+        inhalingMouth = {
+          x: canvas.width * (1 - mouthSmoothed.x),
+          y: canvas.height * mouthSmoothed.y,
+        };
+        break;
+      }
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
     SmokeSystem.update(ctx, dt, Noise.noise2D, {
       dormant: !anyActive,
+      inhalingMouth: inhalingMouth,
     });
 
     // Draw overlays for each detected hand
