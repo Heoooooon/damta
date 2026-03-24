@@ -47,14 +47,14 @@
       dissolvePower: 1.65,
     },
     exhaleBurst: {
-      count: 24,
-      spreadX: 42,
-      spreadY: 18,
+      count: 28,
+      spreadX: 34,
+      spreadY: 14,
       velocityX: 2.6,
       velocityY: { min: -3.4, max: -1.3 },
       lifeMultiplier: 1.15,
-      sizeMultiplier: 1.2,
-      alphaMultiplier: 1.08,
+      sizeMultiplier: 1.4,
+      alphaMultiplier: 1.25,
       turbulence: 1.05,
       riseAccel: 0.0028,
       drag: 0.992,
@@ -104,8 +104,8 @@
       curlStrength: 0.16,
       spreadAccel: 0.1,
       fadeInEnd: 0.14,
-      fadeOutStart: 0.54,
-      fadeOutPower: 1.1,
+      fadeOutStart: 0.48,
+      fadeOutPower: 1.35,
       spriteAlphaMultiplier: 0.28,
       spriteFadeStart: 0.16,
       spriteFadePower: 1.45,
@@ -378,49 +378,62 @@
     }
 
     if (type === 'exhale-stream') {
+      const burst = getBaseProfile(mode, 'exhaleBurst');
       const stream = getBaseProfile(mode, 'exhaleStream');
       const fingertip = getBaseProfile(mode, 'fingertip');
 
+      // progress 0~0.3: burst → stream 전환
+      // progress 0.3~1.0: stream → fingertip 전환
+      const burstBlend = t < 0.3 ? 1 - (t / 0.3) : 0;
+      const decayT = t < 0.3 ? 0 : (t - 0.3) / 0.7;
+
+      // burst→stream 보간된 기본값
+      const baseCount = lerp(stream.count, burst.count, burstBlend);
+      const baseAlpha = lerp(stream.alphaMultiplier, burst.alphaMultiplier, burstBlend);
+      const baseSize = lerp(stream.sizeMultiplier, burst.sizeMultiplier, burstBlend);
+      const baseSpreadX = lerp(stream.spreadX, burst.spreadX, burstBlend);
+      const baseSpreadY = lerp(stream.spreadY, burst.spreadY, burstBlend);
+
       return {
-        count: Math.max(fingertip.count + 2, Math.round(lerp(stream.count, stream.count * 0.72, t))),
-        spreadX: lerp(stream.spreadX, Math.max(fingertip.spreadX + 8, stream.spreadX * 0.82), t),
-        spreadY: lerp(stream.spreadY, Math.max(fingertip.spreadY + 4, stream.spreadY * 0.84), t),
-        velocityX: lerp(stream.velocityX, Math.max(fingertip.velocityX * 1.5, stream.velocityX * 0.8), t),
+        count: Math.max(fingertip.count + 2, Math.round(lerp(baseCount, baseCount * 0.72, decayT))),
+        spreadX: lerp(baseSpreadX, Math.max(fingertip.spreadX + 8, baseSpreadX * 0.82), decayT),
+        spreadY: lerp(baseSpreadY, Math.max(fingertip.spreadY + 4, baseSpreadY * 0.84), decayT),
+        velocityX: lerp(stream.velocityX, Math.max(fingertip.velocityX * 1.5, stream.velocityX * 0.8), decayT),
         velocityY: {
-          min: lerp(stream.velocityY.min, stream.velocityY.min * 0.82, t),
-          max: lerp(stream.velocityY.max, stream.velocityY.max * 0.85, t),
+          min: lerp(stream.velocityY.min, stream.velocityY.min * 0.82, decayT),
+          max: lerp(stream.velocityY.max, stream.velocityY.max * 0.85, decayT),
         },
-        lifeMultiplier: lerp(stream.lifeMultiplier, Math.max(fingertip.lifeMultiplier, stream.lifeMultiplier * 0.92), t),
-        sizeMultiplier: lerp(stream.sizeMultiplier, Math.max(fingertip.sizeMultiplier + 0.12, stream.sizeMultiplier * 0.92), t),
-        alphaMultiplier: lerp(stream.alphaMultiplier, Math.max(fingertip.alphaMultiplier + 0.08, stream.alphaMultiplier * 0.9), t),
-        turbulence: lerp(stream.turbulence, Math.max(fingertip.turbulence + 0.12, stream.turbulence * 0.85), t),
-        riseAccel: lerp(stream.riseAccel, Math.max(fingertip.riseAccel + 0.00035, stream.riseAccel * 0.9), t),
-        drag: lerp(stream.drag, Math.min(0.995, stream.drag + 0.002), t),
-        lateralDamping: lerp(stream.lateralDamping, Math.min(stream.drag, stream.lateralDamping + 0.004), t),
-        trailWidth: lerp(stream.trailWidth, Math.max(fingertip.trailWidth + 0.3, stream.trailWidth * 0.92), t),
-        trailAlpha: lerp(stream.trailAlpha, Math.max(fingertip.trailAlpha * 0.8, stream.trailAlpha * 0.86), t),
-        strandiness: lerp(stream.strandiness, Math.max(fingertip.strandiness * 0.7, stream.strandiness * 0.84), t),
-        unravel: lerp(stream.unravel, Math.max(fingertip.unravel * 0.72, stream.unravel * 0.88), t),
-        curlStrength: lerp(stream.curlStrength, Math.max(fingertip.curlStrength * 0.7, stream.curlStrength * 0.9), t),
-        spreadAccel: lerp(stream.spreadAccel, Math.max(fingertip.spreadAccel * 0.72, stream.spreadAccel * 0.88), t),
-        fadeInEnd: lerp(stream.fadeInEnd, Math.max(0.08, stream.fadeInEnd * 0.96), t),
-        fadeOutStart: lerp(stream.fadeOutStart, Math.max(fingertip.fadeOutStart + 0.04, stream.fadeOutStart * 0.96), t),
-        fadeOutPower: lerp(stream.fadeOutPower, Math.max(fingertip.fadeOutPower * 0.8, stream.fadeOutPower * 1.08), t),
-        spriteAlphaMultiplier: lerp(stream.spriteAlphaMultiplier, Math.max(fingertip.spriteAlphaMultiplier * 1.1, stream.spriteAlphaMultiplier * 0.94), t),
-        spriteFadeStart: lerp(stream.spriteFadeStart, Math.max(fingertip.spriteFadeStart + 0.02, stream.spriteFadeStart * 0.96), t),
-        spriteFadePower: lerp(stream.spriteFadePower, Math.max(fingertip.spriteFadePower * 0.88, stream.spriteFadePower * 1.04), t),
-        veilAlphaMultiplier: lerp(stream.veilAlphaMultiplier, Math.max(fingertip.veilAlphaMultiplier * 0.92, stream.veilAlphaMultiplier * 1.04), t),
-        veilScale: lerp(stream.veilScale, Math.max(fingertip.veilScale * 0.92, stream.veilScale * 1.05), t),
-        haloAlphaMultiplier: lerp(stream.haloAlphaMultiplier, Math.max(fingertip.haloAlphaMultiplier, stream.haloAlphaMultiplier * 1.03), t),
-        haloScale: lerp(stream.haloScale, Math.max(fingertip.haloScale * 0.92, stream.haloScale * 1.04), t),
-        trailSoftness: lerp(stream.trailSoftness, Math.max(fingertip.trailSoftness * 0.82, stream.trailSoftness * 1.04), t),
-        lightAlphaMultiplier: lerp(stream.lightAlphaMultiplier, Math.max(fingertip.lightAlphaMultiplier * 0.86, stream.lightAlphaMultiplier * 1.02), t),
-        lightScale: lerp(stream.lightScale, Math.max(fingertip.lightScale * 0.9, stream.lightScale * 1.04), t),
-        lightOffsetX: lerp(stream.lightOffsetX, fingertip.lightOffsetX * 0.9, t),
-        lightOffsetY: lerp(stream.lightOffsetY, fingertip.lightOffsetY * 0.9, t),
-        dissolveStartDistance: lerp(stream.dissolveStartDistance, Math.max(fingertip.dissolveStartDistance + 18, stream.dissolveStartDistance * 0.96), t),
-        dissolveEndDistance: lerp(stream.dissolveEndDistance, Math.max(fingertip.dissolveEndDistance + 36, stream.dissolveEndDistance * 0.98), t),
-        dissolvePower: lerp(stream.dissolvePower, Math.max(fingertip.dissolvePower * 0.82, stream.dissolvePower * 1.04), t),
+        lifeMultiplier: lerp(stream.lifeMultiplier, Math.max(fingertip.lifeMultiplier, stream.lifeMultiplier * 0.92), decayT),
+        sizeMultiplier: lerp(baseSize, Math.max(fingertip.sizeMultiplier + 0.12, baseSize * 0.92), decayT),
+        alphaMultiplier: lerp(baseAlpha, Math.max(fingertip.alphaMultiplier + 0.08, baseAlpha * 0.9), decayT),
+        turbulence: lerp(stream.turbulence, Math.max(fingertip.turbulence + 0.12, stream.turbulence * 0.85), decayT),
+        riseAccel: lerp(stream.riseAccel, Math.max(fingertip.riseAccel + 0.00035, stream.riseAccel * 0.9), decayT),
+        drag: lerp(stream.drag, Math.min(0.995, stream.drag + 0.002), decayT),
+        lateralDamping: lerp(stream.lateralDamping, Math.min(stream.drag, stream.lateralDamping + 0.004), decayT),
+        trailWidth: lerp(stream.trailWidth, Math.max(fingertip.trailWidth + 0.3, stream.trailWidth * 0.92), decayT),
+        trailAlpha: lerp(stream.trailAlpha, Math.max(fingertip.trailAlpha * 0.8, stream.trailAlpha * 0.86), decayT),
+        strandiness: lerp(stream.strandiness, Math.max(fingertip.strandiness * 0.7, stream.strandiness * 0.84), decayT),
+        unravel: lerp(stream.unravel, Math.max(fingertip.unravel * 0.72, stream.unravel * 0.88), decayT),
+        curlStrength: lerp(stream.curlStrength, Math.max(fingertip.curlStrength * 0.7, stream.curlStrength * 0.9), decayT),
+        spreadAccel: lerp(stream.spreadAccel, Math.max(fingertip.spreadAccel * 0.72, stream.spreadAccel * 0.88), decayT),
+        fadeInEnd: lerp(stream.fadeInEnd, Math.max(0.08, stream.fadeInEnd * 0.96), decayT),
+        fadeOutStart: lerp(stream.fadeOutStart, Math.max(fingertip.fadeOutStart + 0.04, stream.fadeOutStart * 0.96), decayT),
+        fadeOutPower: lerp(stream.fadeOutPower, Math.max(fingertip.fadeOutPower * 0.8, stream.fadeOutPower * 1.08), decayT),
+        spriteAlphaMultiplier: lerp(stream.spriteAlphaMultiplier, Math.max(fingertip.spriteAlphaMultiplier * 1.1, stream.spriteAlphaMultiplier * 0.94), decayT),
+        spriteFadeStart: lerp(stream.spriteFadeStart, Math.max(fingertip.spriteFadeStart + 0.02, stream.spriteFadeStart * 0.96), decayT),
+        spriteFadePower: lerp(stream.spriteFadePower, Math.max(fingertip.spriteFadePower * 0.88, stream.spriteFadePower * 1.04), decayT),
+        veilAlphaMultiplier: lerp(stream.veilAlphaMultiplier, Math.max(fingertip.veilAlphaMultiplier * 0.92, stream.veilAlphaMultiplier * 1.04), decayT),
+        veilScale: lerp(stream.veilScale, Math.max(fingertip.veilScale * 0.92, stream.veilScale * 1.05), decayT),
+        haloAlphaMultiplier: lerp(stream.haloAlphaMultiplier, Math.max(fingertip.haloAlphaMultiplier, stream.haloAlphaMultiplier * 1.03), decayT),
+        haloScale: lerp(stream.haloScale, Math.max(fingertip.haloScale * 0.92, stream.haloScale * 1.04), decayT),
+        trailSoftness: lerp(stream.trailSoftness, Math.max(fingertip.trailSoftness * 0.82, stream.trailSoftness * 1.04), decayT),
+        lightAlphaMultiplier: lerp(stream.lightAlphaMultiplier, Math.max(fingertip.lightAlphaMultiplier * 0.86, stream.lightAlphaMultiplier * 1.02), decayT),
+        lightScale: lerp(stream.lightScale, Math.max(fingertip.lightScale * 0.9, stream.lightScale * 1.04), decayT),
+        lightOffsetX: lerp(stream.lightOffsetX, fingertip.lightOffsetX * 0.9, decayT),
+        lightOffsetY: lerp(stream.lightOffsetY, fingertip.lightOffsetY * 0.9, decayT),
+        dissolveStartDistance: lerp(stream.dissolveStartDistance, Math.max(fingertip.dissolveStartDistance + 18, stream.dissolveStartDistance * 0.96), decayT),
+        dissolveEndDistance: lerp(stream.dissolveEndDistance, Math.max(fingertip.dissolveEndDistance + 36, stream.dissolveEndDistance * 0.98), decayT),
+        dissolvePower: lerp(stream.dissolvePower, Math.max(fingertip.dissolvePower * 0.82, stream.dissolvePower * 1.04), decayT),
       };
     }
 

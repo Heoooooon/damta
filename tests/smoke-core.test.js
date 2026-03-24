@@ -286,3 +286,25 @@ test('ember profile is visible and becomes stronger while inhaling', () => {
   assert.ok(inhaling.coreAlpha > fingertip.coreAlpha);
   assert.ok(inhaling.haloRadius > fingertip.haloRadius);
 });
+
+test('exhale-burst has dense concentrated profile', () => {
+  const profile = getEmissionProfile(null, 'exhale-burst', 0);
+  assert.ok(profile.count >= 28, 'count should be >= 28, got ' + profile.count);
+  assert.ok(profile.alphaMultiplier >= 1.2, 'alpha should be >= 1.2');
+  assert.ok(profile.sizeMultiplier >= 1.3, 'size should be >= 1.3');
+  assert.ok(profile.spreadX <= 36, 'spreadX should be tighter');
+});
+
+test('exhale-stream at progress=0 is close to burst density', () => {
+  const burst = getEmissionProfile(null, 'exhale-burst', 0);
+  const streamStart = getEmissionProfile(null, 'exhale-stream', 0);
+  assert.ok(streamStart.count >= burst.count * 0.75, 'stream start count should be near burst');
+  assert.ok(streamStart.alphaMultiplier >= burst.alphaMultiplier * 0.75, 'stream start alpha should be near burst');
+});
+
+test('exhale-stream fades out more smoothly in later phase', () => {
+  // progress=0에서 stream 기본값 확인 (burst blend이 있으므로 0.3 이후가 stream 기본)
+  const streamMid = getEmissionProfile(null, 'exhale-stream', 0.3);
+  assert.ok(streamMid.fadeOutPower >= 1.3, 'fadeOutPower should be >= 1.3, got ' + streamMid.fadeOutPower);
+  assert.ok(streamMid.fadeOutStart <= 0.5, 'fadeOutStart should be <= 0.5, got ' + streamMid.fadeOutStart);
+});
