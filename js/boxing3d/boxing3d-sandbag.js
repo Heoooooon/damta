@@ -6,7 +6,14 @@
   var MAX_ANGLE = 0.35;
   var FLASH_DECAY = 0.92;
 
-  var HITBOX = { x: 0.5, y: 0.45, halfW: 0.1, halfH: 0.25 };
+  var HITBOX = {
+    x: 0.5,
+    y: 0.45,
+    halfW: 0.1,
+    halfH: 0.25,
+    minExtension: 0.035,
+    minForwardMotion: 0.028
+  };
 
   // 물리 상태
   var angle = 0;
@@ -98,11 +105,12 @@
     return group;
   }
 
-  function applyHit(power, hitX) {
+  function applyHit(power, hitX, impactScale) {
     var impulse = power === 'strong' ? 0.15 : 0.06;
+    var scale = Math.max(1, impactScale || 1);
     var direction = hitX < HITBOX.x ? 1 : -1;
-    angularVelocity += impulse * direction;
-    flash = 1;
+    angularVelocity += impulse * direction * scale;
+    flash = Math.max(flash, scale);
   }
 
   function update(dt) {
@@ -135,7 +143,14 @@
   }
 
   function getHitbox() {
-    return { x: HITBOX.x, y: HITBOX.y, halfW: HITBOX.halfW, halfH: HITBOX.halfH };
+    return {
+      x: HITBOX.x,
+      y: HITBOX.y,
+      halfW: HITBOX.halfW,
+      halfH: HITBOX.halfH,
+      minExtension: HITBOX.minExtension,
+      minForwardMotion: HITBOX.minForwardMotion
+    };
   }
 
   function reset() {

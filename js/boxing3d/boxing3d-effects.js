@@ -125,8 +125,26 @@
     };
   }
 
-  function emit(nx, ny, power) {
-    var cfg = power === 'strong' ? STRONG : NORMAL;
+  function buildImpactConfig(baseCfg, impactScale) {
+    var scale = Math.max(1, impactScale || 1);
+    var scaleDelta = scale - 1;
+    return {
+      count: Math.round(baseCfg.count * (1 + scaleDelta * 0.7)),
+      sizeMin: baseCfg.sizeMin * (1 + scaleDelta * 0.2),
+      sizeMax: baseCfg.sizeMax * (1 + scaleDelta * 0.5),
+      lifetime: baseCfg.lifetime * (1 + scaleDelta * 0.35),
+      lifetimeVar: baseCfg.lifetimeVar,
+      speed: baseCfg.speed * (1 + scaleDelta * 0.45),
+      gravity: baseCfg.gravity,
+      drag: baseCfg.drag,
+      shake: baseCfg.shake * (1 + scaleDelta * 0.9),
+      colors: baseCfg.colors
+    };
+  }
+
+  function emit(nx, ny, power, impactScale) {
+    var baseCfg = power === 'strong' ? STRONG : NORMAL;
+    var cfg = buildImpactConfig(baseCfg, impactScale);
     var pos3d = normalizedTo3D(nx, ny);
 
     for (var i = 0; i < cfg.count; i++) {
@@ -146,13 +164,14 @@
     }
 
     if (power === 'strong') {
-      createRing(pos3d);
+      createRing(pos3d, impactScale);
     }
 
     shakeAmount = cfg.shake;
   }
 
-  function createRing(pos3d) {
+  function createRing(pos3d, impactScale) {
+    var scale = Math.max(1, impactScale || 1);
     var ringGeo = new THREE.RingGeometry(0.05, 0.07, 32);
     var ringMat = new THREE.MeshBasicMaterial({
       color: 0xffa028,
@@ -169,8 +188,8 @@
     rings.push({
       mesh: ringMesh,
       scale: 1,
-      maxScale: 8,
-      expandRate: 0.3,
+      maxScale: 8 + (scale - 1) * 3,
+      expandRate: 0.3 + (scale - 1) * 0.08,
       alpha: 1,
       active: true
     });

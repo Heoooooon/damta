@@ -299,6 +299,7 @@
 
       var pos = BoxingDetection.getFistPosition(landmarks);
       pos.x = 1 - pos.x; // Mirror X
+      pos.z = BoxingDetection.getFistDepth(landmarks);
 
       if (!punchTrackers[i]) {
         punchTrackers[i] = BoxingDetection.createPunchTracker();
@@ -308,18 +309,42 @@
 
       if (state !== 'round') continue;
 
-      var hitResult = BoxingDetection.checkHit(pos, trackResult.displacement, hitbox);
+      var hitResult = BoxingDetection.checkHit(
+        pos,
+        trackResult.displacement,
+        hitbox,
+        {
+          extension: trackResult.extension,
+          forwardMotion: trackResult.forwardMotion,
+          minExtension: hitbox.minExtension,
+          minForwardMotion: hitbox.minForwardMotion
+        }
+      );
 
       if (hitResult.hit && hitCooldowns[i].canHit(now)) {
+        var impactResult = BoxingDetection.resolveHitPower(
+          trackResult.displacement,
+          trackResult.forwardMotion
+        );
+
         hitCooldowns[i].recordHit(now);
         hits++;
-        if (hitResult.power === 'strong') {
+        if (impactResult.power === 'strong') {
           strongHits++;
         }
 
         // 정규화 좌표로 emit (3D 변환은 effects 내부에서)
-        BoxingEffects3D.emit(hitResult.position.x, hitResult.position.y, hitResult.power);
-        BoxingSandbag3D.applyHit(hitResult.power, hitResult.position.x);
+        BoxingEffects3D.emit(
+          hitResult.position.x,
+          hitResult.position.y,
+          impactResult.power,
+          impactResult.impactScale
+        );
+        BoxingSandbag3D.applyHit(
+          impactResult.power,
+          hitResult.position.x,
+          impactResult.impactScale
+        );
       }
     }
 

@@ -74,14 +74,30 @@
   });
 
   // --- Webcam init ---
+  var webcamReady = false;
+
   navigator.mediaDevices.getUserMedia({
     video: { width: 640, height: 480, facingMode: 'user' }
   }).then(function (stream) {
     video.srcObject = stream;
+    return video.play();
+  }).then(function () {
+    webcamReady = true;
+    // Start feeding frames to MediaPipe
+    feedMediaPipe();
   }).catch(function () {
-    errorDiv.textContent = '웹캠 접근이 필요합니다';
-    errorDiv.hidden = false;
+    errorDiv.textContent = '웹캠 접근이 필요합니다.\n브라우저에서 카메라 권한을 허용해주세요.';
+    errorDiv.style.display = 'block';
   });
+
+  // Separate async loop for MediaPipe — must await send() to avoid piling up
+  async function feedMediaPipe() {
+    if (!webcamReady) return;
+    try {
+      await hands.send({ image: video });
+    } catch (e) { /* ignore send errors */ }
+    requestAnimationFrame(feedMediaPipe);
+  }
 
   // --- State transitions ---
   function startCountdown() {
@@ -160,11 +176,10 @@
     timerFill.style.width = pct + '%';
   }
 
-  // --- Hit processing ---
-  function processHands(now) {
+  // --- Hand detection (always runs) ---
+  function detectHands(now) {
     if (!multiHandLandmarks || multiHandLandmarks.length === 0) {
-      // No-hand warning after 5s
-      if (now - lastHandDetectedTime > 5000 && !noHandWarningShown) {
+      if (state === 'round' && now - lastHandDetectedTime > 5000 && !noHandWarningShown) {
         noHandWarning.classList.remove('hidden');
         noHandWarningShown = true;
       }
@@ -181,8 +196,18 @@
 
     for (var i = 0; i < multiHandLandmarks.length; i++) {
       var landmarks = multiHandLandmarks[i];
+      var fistState = BoxingDetection.isFist(landmarks);
 
-      if (!BoxingDetection.isFist(landmarks)) {
+      // Draw hand wireframe overlay
+      TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+        handLandmarks: landmarks,
+        faceLandmarks: null,
+        poseActive: fistState,
+        mirrored: true,
+        mainCanvas: true,
+      });
+
+      if (!fistState) {
         punchTrackers[i] = null;
         continue;
       }
@@ -196,6 +221,10 @@
       }
 
       var trackResult = punchTrackers[i].update(pos);
+
+      // Only count hits during round
+      if (state !== 'round') continue;
+
       var hitResult = BoxingDetection.checkHit(pos, trackResult.displacement, hitbox);
 
       if (hitResult.hit && hitCooldowns[i].canHit(now)) {
@@ -220,20 +249,17 @@
     var dt = lastFrameTime ? timestamp - lastFrameTime : 16.667;
     lastFrameTime = timestamp;
 
-    // Feed video to MediaPipe
-    if (video.readyState >= 2) {
-      hands.send({ image: video });
-    }
-
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Always detect hands (for visualization)
+    detectHands(performance.now());
 
     // Round logic
     if (state === 'round') {
       var elapsed = (performance.now() - roundStartTime) / 1000;
       var remaining = Math.max(0, ROUND_DURATION - elapsed);
 
-      processHands(performance.now());
       updateHUD(remaining);
 
       if (remaining <= 0) {

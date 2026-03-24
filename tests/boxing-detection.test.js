@@ -79,6 +79,7 @@ describe('createPunchTracker', () => {
     const tracker = BoxingDetection.createPunchTracker();
     const result = tracker.update({ x: 0.5, y: 0.5 });
     assert.equal(result.displacement, 0);
+    assert.equal(result.forwardMotion, 0);
   });
 
   it('tracks displacement between frames', () => {
@@ -87,6 +88,15 @@ describe('createPunchTracker', () => {
     const result = tracker.update({ x: 0.8, y: 0.9 });
     // displacement = sqrt((0.3)^2 + (0.4)^2) = 0.5
     assert.ok(Math.abs(result.displacement - 0.5) < 1e-9);
+    assert.equal(result.forwardMotion, 0);
+  });
+
+  it('tracks forward motion when the fist moves toward the camera', () => {
+    const tracker = BoxingDetection.createPunchTracker();
+    tracker.update({ x: 0.5, y: 0.5, z: 0.06 });
+    const result = tracker.update({ x: 0.52, y: 0.5, z: -0.06 });
+    assert.ok(result.forwardMotion > 0.1);
+    assert.ok(result.extension > 0.1);
   });
 });
 
@@ -114,6 +124,26 @@ describe('checkHit', () => {
     const result = BoxingDetection.checkHit({ x: 0.5, y: 0.5 }, 0.01, hitbox);
     assert.equal(result.hit, false);
   });
+
+  it('requires depth extension when a depth gate is provided', () => {
+    const result = BoxingDetection.checkHit(
+      { x: 0.5, y: 0.5 },
+      0.03,
+      hitbox,
+      { extension: 0.01, forwardMotion: 0.005, minExtension: 0.04, minForwardMotion: 0.03 }
+    );
+    assert.equal(result.hit, false);
+  });
+
+  it('allows a hit when the fist reaches the depth gate', () => {
+    const result = BoxingDetection.checkHit(
+      { x: 0.5, y: 0.5 },
+      0.03,
+      hitbox,
+      { extension: 0.05, forwardMotion: 0.01, minExtension: 0.04, minForwardMotion: 0.03 }
+    );
+    assert.equal(result.hit, true);
+  });
 });
 
 describe('createHitCooldown', () => {
@@ -123,5 +153,29 @@ describe('createHitCooldown', () => {
     cooldown.recordHit(1000);
     assert.equal(cooldown.canHit(1100), false);  // 100ms later, still blocked
     assert.equal(cooldown.canHit(1200), true);    // 200ms later, allowed
+  });
+});
+
+describe('getFistDepth', () => {
+  it('returns the average z of wrist and middle MCP', () => {
+    const lm = makeLandmarks({
+      0: { z: 0.08 },
+      9: { z: -0.02 },
+    });
+    assert.ok(Math.abs(BoxingDetection.getFistDepth(lm) - 0.03) < 1e-9);
+  });
+});
+
+describe('resolveHitPower', () => {
+  it('upgrades a normal punch to strong when there is strong forward motion', () => {
+    const result = BoxingDetection.resolveHitPower(0.02, 0.1);
+    assert.equal(result.power, 'strong');
+    assert.ok(result.impactScale > 1.5);
+  });
+
+  it('does not upgrade when the hand is moving away from the camera', () => {
+    const result = BoxingDetection.resolveHitPower(0.02, -0.05);
+    assert.equal(result.power, 'normal');
+    assert.equal(result.impactScale, 1);
   });
 });
