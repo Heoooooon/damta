@@ -19,6 +19,7 @@
     TrackingSmoother.createVelocityPredictor({ maxPredictMs: 120, velocityAlpha: 0.5 }),
   ];
   const mouthSmoother = TrackingSmoother.createPositionSmoother({ alpha: 0.35, deadzone: 0.002 });
+  let smootherEnabled = true;
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -64,22 +65,26 @@
 
       // cigTip 스무딩 + 예측
       let smoothedTip = null;
-      if (handState.cigTip) {
-        smoothedTip = cigTipSmoothers[h].update(handState.cigTip);
-        cigTipPredictors[h].feed(smoothedTip, now);
-      } else {
-        smoothedTip = cigTipPredictors[h].predict(now);
-        if (!smoothedTip) {
-          cigTipSmoothers[h].reset();
-          cigTipPredictors[h].reset();
+      if (smootherEnabled) {
+        if (handState.cigTip) {
+          smoothedTip = cigTipSmoothers[h].update(handState.cigTip);
+          cigTipPredictors[h].feed(smoothedTip, now);
+        } else {
+          smoothedTip = cigTipPredictors[h].predict(now);
+          if (!smoothedTip) {
+            cigTipSmoothers[h].reset();
+            cigTipPredictors[h].reset();
+          }
         }
+      } else {
+        smoothedTip = handState.cigTip;
       }
       smoothedTips.push(smoothedTip);
 
       const smokeResult = smokeStateMachines[h].update({
         poseActive: handState.poseActive || !!smoothedTip,
         cigTip: smoothedTip,
-        mouth: mouthSmoothed,
+        mouth: smootherEnabled ? mouthSmoothed : mouth,
         faceHeight: faceH,
       }, now);
       smokeResults.push(smokeResult);
@@ -212,6 +217,7 @@
       ctx.fillText('MouthDist: ' + mouthDistDebug + ' / Threshold: ' + thresholdDebug, 20, 150);
     }
     ctx.fillText('Snapshots: ' + _snapshots.length + ' (press P)', 20, 170);
+    ctx.fillText('Smoother: ' + (smootherEnabled ? 'ON' : 'OFF') + ' (press S)', 20, 190);
 
     requestAnimationFrame(mainLoop);
   }
@@ -279,6 +285,9 @@
       navigator.clipboard.writeText(JSON.stringify(_snapshots, null, 2)).then(() => {
         console.log('Snapshot #' + _snapshots.length + ' copied to clipboard');
       });
+    } else if (e.code === 'KeyS') {
+      smootherEnabled = !smootherEnabled;
+      console.log('Smoother: ' + (smootherEnabled ? 'ON' : 'OFF'));
     } else if (e.code === 'KeyH') {
       video.classList.toggle('hidden');
     }
