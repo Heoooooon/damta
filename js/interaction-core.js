@@ -346,6 +346,7 @@
     let exhaleStartTime = -Infinity;
     let cooldownUntil = 0;
     let lastMouth = null;
+    let exhaleDirection = null;
 
     function resetInhale() {
       inhaleStartTime = 0;
@@ -373,15 +374,17 @@
               Math.max(1, config.exhaleHoldDuration - config.exhaleBurstDuration)
           );
 
+          const em = createEmission(
+            emissionType,
+            progress,
+            emissionType === 'exhale-burst' ? 1 : 0.82
+          );
+          em.direction = exhaleDirection;
           return {
             state: 'exhaling',
             emitPos: lastMouth,
             isExhale: true,
-            emission: createEmission(
-              emissionType,
-              progress,
-              emissionType === 'exhale-burst' ? 1 : 0.82
-            ),
+            emission: em,
           };
         }
 
@@ -458,11 +461,24 @@
           nearMouth = false;
           resetInhale();
 
+          // 배출 방향: mouth → cigTip
+          exhaleDirection = null;
+          if (cigTip && mouth) {
+            const ddx = cigTip.x - mouth.x;
+            const ddy = cigTip.y - mouth.y;
+            const dlen = Math.hypot(ddx, ddy);
+            if (dlen > 0.001) {
+              exhaleDirection = { x: ddx / dlen, y: ddy / dlen };
+            }
+          }
+
+          const burstEm = createEmission('exhale-burst');
+          burstEm.direction = exhaleDirection;
           return {
             state: 'exhaling',
             emitPos: mouth,
             isExhale: true,
-            emission: createEmission('exhale-burst'),
+            emission: burstEm,
             tipToMouth,
             movedFromAnchor,
             thresholds: {
