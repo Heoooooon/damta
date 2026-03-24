@@ -63,10 +63,9 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
+.nav-link,
 .nav-boxing {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
   padding: 8px 16px;
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.6);
@@ -80,6 +79,17 @@ body {
   transition: background 0.2s;
 }
 
+.nav-boxing {
+  bottom: 20px;
+  right: 20px;
+}
+
+.nav-finger-gun {
+  bottom: 20px;
+  right: 138px;
+}
+
+.nav-link:hover,
 .nav-boxing:hover {
   background: rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.8);

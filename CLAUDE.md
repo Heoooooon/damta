@@ -57,3 +57,11 @@ All JS files are in `js/` and loaded as plain `<script>` tags in `index.html` (o
 - `fingertip` — thin wisp rising from cigarette tip
 - `exhale-burst` — initial dense cloud from mouth
 - `exhale-stream` — sustained exhale that lerps toward fingertip profile over time
+
+## Obsidian Vault
+
+- 경로: /Users/gwon-yeheon/gwon-vault
+- 온보딩: Memory.md
+- 프로젝트별 현황: CMORE/{프로젝트명}/{프로젝트명} 현황.md
+- 세션 로그: CMORE/{프로젝트명}/sessions/
+- 라우팅 규칙: Memory.md 하단 참고
