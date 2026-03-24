@@ -433,9 +433,10 @@
         smokeState = 'inhaling';
         return {
           state: 'inhaling',
-          emitPos: null,
+          emitPos: cigTip,
           isExhale: false,
-          emission: createEmission(null),
+          emission: createEmission('fingertip', 0, 0.3),
+          inhalingMouth: mouth,
           tipToMouth,
           thresholds: {
             enter: enterThreshold,

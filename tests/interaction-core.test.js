@@ -89,7 +89,9 @@ test('smoke state machine holds exhale long enough to feel like a breath', () =>
     faceHeight: 0.4,
   }, 100);
   assert.equal(inhaling.state, 'inhaling');
-  assert.equal(inhaling.emission.type, null);
+  // inhaling 중에도 소량 fingertip 파티클 생성 (흡인 효과용)
+  assert.equal(inhaling.emission.type, 'fingertip');
+  assert.ok(inhaling.emission.strength <= 0.5, 'inhaling emission should be weak');
 
   const exhaleBurst = machine.update({
     poseActive: true,
