@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finger Gun 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background:
+        radial-gradient(circle at top, rgba(35, 48, 70, 0.6), transparent 30%),
+        linear-gradient(180deg, #070b12 0%, #101b2e 48%, #06080d 100%);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: -apple-system, 'Apple SD Gothic Neo', 'Pretendard', sans-serif;
+    }
+
+    #fingerGunCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #webcam {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 160px;
+      height: 120px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 20;
+    }
+
+    #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 14px;
+      text-align: center;
+      white-space: pre-line;
+      z-index: 30;
+    }
+
+    .nav-back {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 14px;
+      z-index: 20;
+      transition: color 0.2s;
+    }
+
+    .nav-back:hover { color: rgba(255, 255, 255, 0.85); }
+
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 25;
+      pointer-events: none;
+    }
+
+    #hud.hidden { display: none; }
+
+    .hud-top {
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      padding: 16px 24px 8px;
+    }
+
+    .hud-stat {
+      min-width: 88px;
+      color: rgba(245, 248, 255, 0.95);
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: -0.02em;
+    }
+
+    .hud-stat-label {
+      display: block;
+      margin-top: 4px;
+      color: rgba(195, 210, 232, 0.65);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .timer-bar {
+      width: 220px;
+      height: 5px;
+      margin: 6px auto 0;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .timer-fill {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #7ad6ff 0%, #ffe083 100%);
+      transition: width 0.3s linear;
+    }
+
+    #noHandWarning {
+      position: fixed;
+      bottom: 84px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: rgba(8, 13, 22, 0.72);
+      border: 1px solid rgba(122, 214, 255, 0.22);
+      color: rgba(223, 236, 255, 0.85);
+      font-size: 14px;
+      z-index: 25;
+      backdrop-filter: blur(14px);
+    }
+
+    #noHandWarning.hidden { display: none; }
+
+    #aimReticle {
+      position: fixed;
+      width: 44px;
+      height: 44px;
+      margin-left: -22px;
+      margin-top: -22px;
+      border-radius: 50%;
+      border: 2px solid rgba(122, 214, 255, 0.95);
+      box-shadow:
+        0 0 0 4px rgba(122, 214, 255, 0.08),
+        0 0 18px rgba(122, 214, 255, 0.35);
+      opacity: 0;
+      z-index: 24;
+      pointer-events: none;
+      transition: opacity 0.1s ease-out;
+    }
+
+    #aimReticle::before,
+    #aimReticle::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: rgba(122, 214, 255, 0.95);
+      transform: translate(-50%, -50%);
+    }
+
+    #aimReticle::before { width: 18px; height: 2px; }
+    #aimReticle::after { width: 2px; height: 18px; }
+
+    #countdown {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+    }
+
+    #countdown.hidden { display: none; }
+
+    #countdownNumber {
+      color: rgba(255, 255, 255, 0.95);
+      font-size: 120px;
+      font-weight: 800;
+      text-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .guide-overlay,
+    .result-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 70;
+      background: rgba(4, 7, 12, 0.58);
+      backdrop-filter: blur(18px);
+    }
+
+    .guide-overlay.hidden,
+    .result-overlay.hidden { display: none; }
+
+    .guide-modal,
+    .result-modal {
+      width: 360px;
+      padding: 32px 28px 28px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, #fbfdff 0%, #edf4ff 100%);
+      color: #142033;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28);
+    }
+
+    .guide-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(37, 88, 160, 0.08);
+      color: #3367b1;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .guide-title,
+    .result-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+    }
+
+    .guide-desc {
+      color: #526079;
+      font-size: 14px;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .guide-list {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .guide-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(17, 31, 52, 0.06);
+      color: #233048;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .guide-start,
+    .result-retry {
+      width: 100%;
+      padding: 15px 0;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(90deg, #13243e 0%, #2c5c9e 100%);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .result-stats {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .result-stat {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(22, 40, 66, 0.08);
+      font-size: 15px;
+    }
+
+    .result-stat-label { color: #61708c; }
+    .result-stat-value { font-weight: 700; color: #162842; }
+  </style>
+</head>
+<body>
+  <canvas id="fingerGunCanvas"></canvas>
+  <video id="webcam" autoplay playsinline></video>
+  <div id="error" hidden></div>
+  <a class="nav-back" href="index.html">&larr; 담타</a>
+
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-stat"><span id="hudTimer">00:30</span><span class="hud-stat-label">타이머</span></div>
+      <div class="hud-stat"><span id="hudScore">0</span><span class="hud-stat-label">점수</span></div>
+      <div class="hud-stat"><span id="hudHits">0 / 0</span><span class="hud-stat-label">명중</span></div>
+      <div class="hud-stat"><span id="hudAccuracy">0%</span><span class="hud-stat-label">정확도</span></div>
+    </div>
+    <div class="timer-bar"><div class="timer-fill" id="timerFill"></div></div>
+  </div>
+
+  <div id="aimReticle"></div>
+  <div id="noHandWarning" class="hidden">검지와 중지를 펴고 위로 까딱 쏘세요</div>
+  <div id="countdown" class="hidden"><span id="countdownNumber"></span></div>
+
+  <div id="guideModal" class="guide-overlay">
+    <div class="guide-modal">
+      <div class="guide-kicker">Finger Gun 3D</div>
+      <h2 class="guide-title">손끝으로 움직이는 사격장을 열었습니다</h2>
+      <p class="guide-desc">
+        검지와 중지를 총신처럼 펴고 움직이는 표적을 조준하세요.
+        총구를 위로 까딱 올리는 동작에만 발사되며, 정중앙에 맞출수록 점수가 커집니다.
+      </p>
+      <div class="guide-list">
+        <div class="guide-item">검지와 중지를 펴고, 약지와 소지는 접기</div>
+        <div class="guide-item">두 손가락 방향으로 생기는 조준점을 표적에 맞추기</div>
+        <div class="guide-item">손끝을 위로 까딱 올리는 순간 한 발 발사</div>
+        <div class="guide-item">30초 동안 최대 점수를 노리기</div>
+      </div>
+      <button class="guide-start" id="guideStart">사격 시작</button>
+    </div>
+  </div>
+
+  <div id="resultModal" class="result-overlay hidden">
+    <div class="result-modal">
+      <h2 class="result-title">라운드 종료</h2>
+      <div class="result-stats">
+        <div class="result-stat">
+          <span class="result-stat-label">총 점수</span>
+          <span class="result-stat-value" id="resultScore">0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-label">명중 수</span>
+          <span class="result-stat-value" id="resultHits">0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-label">발사 수</span>
+          <span class="result-stat-value" id="resultShots">0</span>
+        </div>
+        <div class="result-stat">
+          <span class="result-stat-label">정확도</span>
+          <span class="result-stat-value" id="resultAccuracy">0%</span>
+        </div>
+      </div>
+      <button class="result-retry" id="resultRetry">다시 하기</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+
+  <script src="js/boxing3d/boxing3d-scene.js"></script>
+  <script src="js/finger-gun/finger-gun-detection.js"></script>
+  <script src="js/finger-gun/finger-gun-target.js"></script>
+  <script src="js/finger-gun/finger-gun-effects.js"></script>
+  <script src="js/finger-gun/finger-gun-app.js"></script>
+</body>
+</html>
