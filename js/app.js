@@ -157,36 +157,37 @@
     }
 
     if (useMouseMode) {
-      const faceLandmarksMouse = MouseController.getLandmarks();
-      for (let h = 0; h < allLandmarks.length; h++) {
-        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
-          handLandmarks: allLandmarks[h],
-          faceLandmarks: faceLandmarksMouse,
-          poseActive: handStates[h] ? handStates[h].poseActive : false,
-          mirrored: false,
-        });
-        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
-          handLandmarks: allLandmarks[h],
-          faceLandmarks: faceLandmarksMouse,
-          poseActive: handStates[h] ? handStates[h].poseActive : false,
-          mirrored: true,
-          mainCanvas: true,
-        });
+      if (mouthSmoothed) {
+        const mx = canvas.width * (1 - mouthSmoothed.x);
+        const my = canvas.height * mouthSmoothed.y;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 180, 180, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(mx, my, 18, 10, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 180, 180, 0.15)';
+        ctx.fill();
+        ctx.restore();
       }
-      if (allLandmarks.length === 0 && faceLandmarksMouse) {
-        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
-          handLandmarks: null,
-          faceLandmarks: faceLandmarksMouse,
-          poseActive: false,
-          mirrored: false,
-        });
-        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
-          handLandmarks: null,
-          faceLandmarks: faceLandmarksMouse,
-          poseActive: false,
-          mirrored: true,
-          mainCanvas: true,
-        });
+      const mouseDebug = MouseController.getDebugInfo();
+      if (mouseDebug.mousePos) {
+        const cx = canvas.width * (1 - mouseDebug.mousePos.x);
+        const cy = canvas.height * mouseDebug.mousePos.y;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 230, 180, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        if (mouseDebug.poseActive) {
+          ctx.strokeStyle = 'rgba(255, 200, 120, 0.6)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     } else {
       for (let h = 0; h < allLandmarks.length; h++) {
