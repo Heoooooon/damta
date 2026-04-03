@@ -57,6 +57,8 @@
     const faceLandmarks = FaceDetector.getLandmarks();
 
     const now = performance.now();
+    const currentMode = SmokeModes.get();
+    const isTextSmokeMode = currentMode.renderStyle === 'text-smoke';
     let anyActive = false;
     const smokeResults = [];
     const smoothedTips = [];
@@ -90,17 +92,42 @@
       smokeResults.push(smokeResult);
 
       if (smokeResult.emitPos && smokeResult.emission.type) {
-        SmokeSystem.emit(
-          smokeResult.emitPos.x,
-          smokeResult.emitPos.y,
-          canvas.width,
-          canvas.height,
-          SmokeModes.get(),
-          smokeResult.emission,
-          dt
-        );
+        if (isTextSmokeMode) {
+          TextSmokeSystem.emit(
+            smokeResult.emitPos.x,
+            smokeResult.emitPos.y,
+            canvas.width,
+            canvas.height,
+            currentMode,
+            smokeResult.emission,
+            dt
+          );
+        } else {
+          SmokeSystem.emit(
+            smokeResult.emitPos.x,
+            smokeResult.emitPos.y,
+            canvas.width,
+            canvas.height,
+            currentMode,
+            smokeResult.emission,
+            dt
+          );
+        }
       }
       if (smokeResult.state !== 'idle') anyActive = true;
+    }
+
+    // 임계값 자동 보정: inhaling 상태에서 tipToMouth 거리 기반으로 동적 조정
+    for (let h = 0; h < smokeResults.length; h++) {
+      const sr = smokeResults[h];
+      if (sr && sr.tipToMouth != null && sr.state === 'inhaling' && faceH > 0) {
+        const measuredRatio = sr.tipToMouth / faceH;
+        const baseEnter = 0.35;
+        const baseExit = 0.45;
+        const newEnter = Math.min(baseEnter, measuredRatio * 1.3);
+        const newExit = Math.min(baseExit, measuredRatio * 1.5);
+        smokeStateMachines[h].setDynamicThresholds(newEnter, newExit);
+      }
     }
 
     // inhaling 중인 손이 있으면 mouth 캔버스 좌표로 변환
@@ -117,10 +144,17 @@
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
-    SmokeSystem.update(ctx, dt, Noise.noise2D, {
-      dormant: !anyActive,
-      inhalingMouth: inhalingMouth,
-    });
+    if (isTextSmokeMode) {
+      TextSmokeSystem.update(ctx, dt, {
+        dormant: !anyActive,
+        inhalingMouth: inhalingMouth,
+      });
+    } else {
+      SmokeSystem.update(ctx, dt, Noise.noise2D, {
+        dormant: !anyActive,
+        inhalingMouth: inhalingMouth,
+      });
+    }
 
     // Draw overlays for each detected hand
     for (let h = 0; h < allLandmarks.length; h++) {
@@ -166,7 +200,7 @@
           tip.y,
           canvas.width,
           canvas.height,
-          SmokeModes.get(),
+          currentMode,
           smokeResults[h].state,
           now
         );
@@ -202,7 +236,7 @@
       poseScore: debugScore,
       state: smokeResult.state,
       emission: smokeResult.emission.type,
-      particles: SmokeSystem.getActiveCount(),
+      particles: isTextSmokeMode ? TextSmokeSystem.getActiveCount() : SmokeSystem.getActiveCount(),
       gapPalm: debugGap,
       mouthDist: mouthDistDebug,
       mouthThreshold: thresholdDebug,
@@ -280,11 +314,16 @@
   const modeBtn = document.getElementById('modeBtn');
   modeBtn.textContent = SmokeModes.getName();
 
+  function applyMode(mode) {
+    modeBtn.textContent = mode.name;
+    SmokeSystem.reset();
+    TextSmokeSystem.reset();
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'KeyM') {
       e.preventDefault();
-      const mode = SmokeModes.toggle();
-      modeBtn.textContent = mode.name;
+      applyMode(SmokeModes.toggle());
     } else if (e.code === 'KeyF') {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen();
@@ -307,8 +346,7 @@
   });
 
   modeBtn.addEventListener('click', () => {
-    const mode = SmokeModes.toggle();
-    modeBtn.textContent = mode.name;
+    applyMode(SmokeModes.toggle());
   });
 
   // Guide modal — start app only after user clicks

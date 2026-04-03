@@ -18,10 +18,10 @@
   };
 
   const DEFAULT_SMOKE_OPTIONS = {
-    nearEnterRatio: 0.27,
-    nearExitRatio: 0.35,
-    inhaleMinDuration: 180,
-    exhaleMinMoveRatio: 0.2,
+    nearEnterRatio: 0.35,
+    nearExitRatio: 0.45,
+    inhaleMinDuration: 120,
+    exhaleMinMoveRatio: 0.12,
     exhaleHoldDuration: 760,
     exhaleBurstDuration: 220,
     cooldownDuration: 140,
@@ -340,6 +340,7 @@
   function createSmokeStateMachine(options) {
     const config = Object.assign({}, DEFAULT_SMOKE_OPTIONS, options);
     let smokeState = 'idle';
+    let blendFactor = 0;
     let inhaleStartTime = 0;
     let inhaleAnchorTip = null;
     let nearMouth = false;
@@ -349,11 +350,19 @@
     let exhaleDirection = null;
     let inhaleAccumulated = 0;
     let exhaleStrength = 1;
+    let dynamicEnterRatio = config.nearEnterRatio;
+    let dynamicExitRatio = config.nearExitRatio;
 
     function resetInhale() {
       inhaleStartTime = 0;
       inhaleAnchorTip = null;
       inhaleAccumulated = 0;
+      blendFactor = 0;
+    }
+
+    function setDynamicThresholds(enterRatio, exitRatio) {
+      dynamicEnterRatio = enterRatio;
+      dynamicExitRatio = exitRatio;
     }
 
     function update(input, now) {
@@ -377,6 +386,8 @@
               Math.max(1, config.exhaleHoldDuration - config.exhaleBurstDuration)
           );
 
+          blendFactor = Math.min(1, blendFactor + 0.05);
+
           const baseStr = emissionType === 'exhale-burst' ? 1 : 0.82;
           const em = createEmission(
             emissionType,
@@ -389,10 +400,12 @@
             emitPos: lastMouth,
             isExhale: true,
             emission: em,
+            blendFactor,
           };
         }
 
         smokeState = poseActive && cigTip ? 'fingertip' : 'idle';
+        blendFactor = 0;
         cooldownUntil = now + config.cooldownDuration;
       }
 
@@ -405,6 +418,7 @@
           emitPos: null,
           isExhale: false,
           emission: createEmission(null),
+          blendFactor: 0,
         };
       }
 
@@ -417,12 +431,13 @@
           emitPos: cigTip,
           isExhale: false,
           emission: createEmission('fingertip'),
+          blendFactor: 0,
         };
       }
 
       const tipToMouth = dist(cigTip, mouth);
-      const enterThreshold = config.nearEnterRatio * faceHeight;
-      const exitThreshold = config.nearExitRatio * faceHeight;
+      const enterThreshold = dynamicEnterRatio * faceHeight;
+      const exitThreshold = dynamicExitRatio * faceHeight;
 
       nearMouth = nearMouth
         ? tipToMouth <= exitThreshold
@@ -435,9 +450,7 @@
         }
 
         smokeState = 'inhaling';
-        // 흡입량 누적 (프레임당 ~16ms 기준)
         inhaleAccumulated = clamp01(inhaleAccumulated + 0.02);
-        // cigTip → mouth 방향 (빨려들어가는 방향)
         var inhaleDir = null;
         if (cigTip && mouth) {
           var idx = mouth.x - cigTip.x;
@@ -455,6 +468,7 @@
           emitPos: cigTip,
           isExhale: false,
           emission: inhaleEm,
+          blendFactor: 0,
           inhalingMouth: mouth,
           tipToMouth,
           thresholds: {
@@ -471,19 +485,19 @@
           : tipToMouth;
         const exhaleDistance = config.exhaleMinMoveRatio * faceHeight;
 
-        if (
-          inhaleDuration >= config.inhaleMinDuration &&
-          tipToMouth >= exhaleDistance &&
-          movedFromAnchor >= exhaleDistance * 0.6
-        ) {
+        const cond1 = inhaleDuration >= config.inhaleMinDuration;
+        const cond2 = tipToMouth >= exhaleDistance;
+        const cond3 = movedFromAnchor >= exhaleDistance * 0.6;
+        const metCount = (cond1 ? 1 : 0) + (cond2 ? 1 : 0) + (cond3 ? 1 : 0);
+
+        if (metCount >= 2) {
           smokeState = 'exhaling';
+          blendFactor = 0;
           exhaleStartTime = now;
           nearMouth = false;
-          // 흡입량 → 배출 강도 (0.3~1.0, 짧게 빨면 약하게)
           exhaleStrength = Math.max(0.3, inhaleAccumulated);
           resetInhale();
 
-          // 배출 방향: mouth → cigTip
           exhaleDirection = null;
           if (cigTip && mouth) {
             const ddx = cigTip.x - mouth.x;
@@ -501,6 +515,7 @@
             emitPos: mouth,
             isExhale: true,
             emission: burstEm,
+            blendFactor,
             tipToMouth,
             movedFromAnchor,
             thresholds: {
@@ -512,12 +527,14 @@
       }
 
       smokeState = 'fingertip';
+      blendFactor = Math.max(0, blendFactor - 0.08);
       resetInhale();
       return {
         state: 'fingertip',
         emitPos: cigTip,
         isExhale: false,
         emission: createEmission('fingertip'),
+        blendFactor,
         tipToMouth,
         thresholds: {
           enter: enterThreshold,
@@ -530,7 +547,7 @@
       return smokeState;
     }
 
-    return { update, getState };
+    return { update, getState, setDynamicThresholds };
   }
 
   return {
