@@ -156,7 +156,39 @@
       });
     }
 
-    if (!useMouseMode) {
+    if (useMouseMode) {
+      const faceLandmarksMouse = MouseController.getLandmarks();
+      for (let h = 0; h < allLandmarks.length; h++) {
+        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+          handLandmarks: allLandmarks[h],
+          faceLandmarks: faceLandmarksMouse,
+          poseActive: handStates[h] ? handStates[h].poseActive : false,
+          mirrored: false,
+        });
+        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+          handLandmarks: allLandmarks[h],
+          faceLandmarks: faceLandmarksMouse,
+          poseActive: handStates[h] ? handStates[h].poseActive : false,
+          mirrored: true,
+          mainCanvas: true,
+        });
+      }
+      if (allLandmarks.length === 0 && faceLandmarksMouse) {
+        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+          handLandmarks: null,
+          faceLandmarks: faceLandmarksMouse,
+          poseActive: false,
+          mirrored: false,
+        });
+        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+          handLandmarks: null,
+          faceLandmarks: faceLandmarksMouse,
+          poseActive: false,
+          mirrored: true,
+          mainCanvas: true,
+        });
+      }
+    } else {
       for (let h = 0; h < allLandmarks.length; h++) {
         TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
           handLandmarks: allLandmarks[h],
