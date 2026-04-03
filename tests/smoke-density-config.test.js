@@ -16,9 +16,13 @@ function loadSmokeModes() {
   return context.globalThis.__SmokeModes;
 }
 
-test('realistic mode is configured dense enough to visibly increase smoke volume', () => {
+function getRealisticMode() {
   const smokeModes = loadSmokeModes();
-  const realistic = smokeModes.get();
+  return smokeModes.get().name === 'Realistic' ? smokeModes.get() : smokeModes.toggle();
+}
+
+test('realistic mode is configured dense enough to visibly increase smoke volume', () => {
+  const realistic = getRealisticMode();
 
   assert.ok(realistic.maxParticles >= 4300);
   assert.ok(realistic.emissions.fingertip.count >= 16);
@@ -27,8 +31,7 @@ test('realistic mode is configured dense enough to visibly increase smoke volume
 });
 
 test('realistic mode keeps smoke alive longer before hard deletion', () => {
-  const smokeModes = loadSmokeModes();
-  const realistic = smokeModes.get();
+  const realistic = getRealisticMode();
 
   assert.ok(realistic.lifetime.min >= 8000);
   assert.ok(realistic.lifetime.max >= 15000);
@@ -38,8 +41,7 @@ test('realistic mode keeps smoke alive longer before hard deletion', () => {
 });
 
 test('realistic mode lets smoke climb higher before it dissolves away', () => {
-  const smokeModes = loadSmokeModes();
-  const realistic = smokeModes.get();
+  const realistic = getRealisticMode();
   const fingertip = realistic.emissions.fingertip;
   const exhaleStream = realistic.emissions.exhaleStream;
 
@@ -52,8 +54,7 @@ test('realistic mode lets smoke climb higher before it dissolves away', () => {
 });
 
 test('realistic fingertip smoke stays visibly readable near the ember', () => {
-  const smokeModes = loadSmokeModes();
-  const realistic = smokeModes.get();
+  const realistic = getRealisticMode();
   const fingertip = getEmissionProfile(realistic, 'fingertip', 0);
   const particleAlpha = getParticleAlpha(
     fingertip,

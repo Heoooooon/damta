@@ -63,6 +63,24 @@ describe('isFingerGunPose', () => {
     assert.equal(FingerGunDetection.isFingerGunPose(lm), true);
   });
 
+  it('returns true when support fingers are folded in depth while the barrel points at the camera', () => {
+    const lm = makeLandmarks({
+      5: { x: 0.52, y: 0.58, z: 0.02 },
+      6: { x: 0.5, y: 0.58, z: -0.12 },
+      8: { x: 0.49, y: 0.57, z: -0.34 },
+      9: { x: 0.56, y: 0.64, z: 0.03 },
+      10: { x: 0.54, y: 0.64, z: -0.1 },
+      12: { x: 0.52, y: 0.63, z: -0.3 },
+      13: { x: 0.58, y: 0.73, z: 0.0 },
+      14: { x: 0.56, y: 0.77, z: -0.08 },
+      16: { x: 0.555, y: 0.78, z: -0.01 },
+      17: { x: 0.62, y: 0.8, z: 0.01 },
+      18: { x: 0.6, y: 0.84, z: -0.07 },
+      20: { x: 0.595, y: 0.85, z: 0.0 },
+    });
+    assert.equal(FingerGunDetection.isFingerGunPose(lm), true);
+  });
+
   it('returns false when the middle finger is folded', () => {
     const lm = makeLandmarks({
       2: { x: 0.38, y: 0.68 },

@@ -105,15 +105,15 @@
     const spreadX = phase === 'burst' ? 26 : phase === 'stream' ? 20 : 10;
     const spreadY = phase === 'burst' ? 14 : phase === 'stream' ? 12 : 7;
     const driftX = phase === 'fingertip'
-      ? randomBetween(-0.42, 0.42)
+      ? randomBetween(-0.25, 0.25)
       : phase === 'burst'
-        ? randomBetween(-0.28, 0.28)
-        : randomBetween(-0.2, 0.2);
+        ? randomBetween(-0.18, 0.18)
+        : randomBetween(-0.12, 0.12);
     const driftY = phase === 'fingertip'
-      ? randomBetween(-1.0, -0.3)
+      ? randomBetween(-0.5, -0.15)
       : phase === 'burst'
-        ? randomBetween(-0.72, -0.18)
-        : randomBetween(-0.44, -0.1);
+        ? randomBetween(-0.4, -0.1)
+        : randomBetween(-0.25, -0.05);
 
     return {
       id: nextId++,
@@ -123,16 +123,16 @@
       displayText: text,
       x: x + randomBetween(-spreadX, spreadX),
       y: y + randomBetween(-spreadY, spreadY),
-      vx: dirX * randomBetween(0.95, 2.9) * scale + driftX,
-      vy: dirY * randomBetween(0.8, 1.9) * scale + driftY,
+      vx: dirX * randomBetween(0.5, 1.5) * scale + driftX,
+      vy: dirY * randomBetween(0.5, 1.2) * scale + driftY,
       baseAlpha: style.alpha,
       size: style.fontSize * randomBetween(0.94, 1.08),
       rotation: randomBetween(-0.08, 0.08),
       spin: randomBetween(-0.0015, 0.0015),
       life: 0,
       maxLife: randomBetween(
-        phase === 'burst' ? 1800 : phase === 'stream' ? 2600 : 1000,
-        phase === 'burst' ? 2500 : phase === 'stream' ? 3600 : 1600
+        phase === 'burst' ? 2200 : phase === 'stream' ? 3200 : 1400,
+        phase === 'burst' ? 3000 : phase === 'stream' ? 4200 : 2000
       ),
     };
   }
@@ -157,10 +157,10 @@
   }
 
   function getPhaseLift(phase) {
-    if (phase === 'fingertip') return 0.02;
-    if (phase === 'burst') return 0.014;
-    if (phase === 'stream') return 0.012;
-    return 0.012;
+    if (phase === 'fingertip') return 0.01;
+    if (phase === 'burst') return 0.007;
+    if (phase === 'stream') return 0.006;
+    return 0.006;
   }
 
   function getPhaseFade(token, lifeRatio) {

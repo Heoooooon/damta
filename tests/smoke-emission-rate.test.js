@@ -61,10 +61,14 @@ function loadSmokeSystem() {
   return context.globalThis.__SmokeSystem;
 }
 
-test('continuous fingertip emission respects emitRate instead of filling the particle cap in a second', () => {
+function getRealisticMode() {
   const smokeModes = loadSmokeModes();
+  return smokeModes.get().name === 'Realistic' ? smokeModes.get() : smokeModes.toggle();
+}
+
+test('continuous fingertip emission respects emitRate instead of filling the particle cap in a second', () => {
   const smokeSystem = loadSmokeSystem();
-  const realistic = smokeModes.get();
+  const realistic = getRealisticMode();
 
   for (let frame = 0; frame < 60; frame++) {
     smokeSystem.emit(
@@ -85,9 +89,8 @@ test('continuous fingertip emission respects emitRate instead of filling the par
 });
 
 test('idle smoke cleanup drains lingering particles instead of keeping the active count stuck', () => {
-  const smokeModes = loadSmokeModes();
   const smokeSystem = loadSmokeSystem();
-  const realistic = smokeModes.get();
+  const realistic = getRealisticMode();
   const ctx = createFakeContext();
 
   for (let frame = 0; frame < 60; frame++) {
