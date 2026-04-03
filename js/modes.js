@@ -1,9 +1,12 @@
 const SmokeModes = (function () {
-  let current = 'realistic';
+  const order = ['textSmoke', 'realistic', 'artistic'];
+  let current = order[0];
 
   const presets = {
     realistic: {
+      key: 'realistic',
       name: 'Realistic',
+      renderStyle: 'particles',
       colors: [
         'rgba(210,216,224,',
         'rgba(190,196,206,',
@@ -63,7 +66,7 @@ const SmokeModes = (function () {
           dissolvePower: 1.12,
         },
         exhaleBurst: {
-          count: 136,
+          count: 160,
           spreadX: 60,
           spreadY: 24,
           velocityX: 4.0,
@@ -94,7 +97,7 @@ const SmokeModes = (function () {
           dissolvePower: 1.04,
         },
         exhaleStream: {
-          count: 80,
+          count: 100,
           spreadX: 40,
           spreadY: 16,
           velocityX: 1.6,
@@ -135,7 +138,9 @@ const SmokeModes = (function () {
       },
     },
     artistic: {
+      key: 'artistic',
       name: 'Artistic',
+      renderStyle: 'particles',
       colors: [
         'rgba(0,255,255,',
         'rgba(255,0,255,',
@@ -181,7 +186,7 @@ const SmokeModes = (function () {
           dissolvePower: 1.86,
         },
         exhaleBurst: {
-          count: 42,
+          count: 56,
           spreadX: 64,
           spreadY: 24,
           velocityX: 4.1,
@@ -206,7 +211,7 @@ const SmokeModes = (function () {
           dissolvePower: 1.2,
         },
         exhaleStream: {
-          count: 22,
+          count: 32,
           spreadX: 42,
           spreadY: 18,
           velocityX: 1.9,
@@ -240,6 +245,46 @@ const SmokeModes = (function () {
         sparkAlpha: 0.92,
       },
     },
+    textSmoke: {
+      key: 'textSmoke',
+      name: 'Text Smoke',
+      renderStyle: 'text-smoke',
+      colors: ['rgba(228,228,236,', 'rgba(206,210,218,', 'rgba(184,188,200,'],
+      lightColor: 'rgba(255,245,232,',
+      startAlpha: 0.12,
+      maxAlpha: 0.86,
+      startSize: 12,
+      maxSize: 32,
+      speed: { min: 0.35, max: 1.1 },
+      lifetime: { min: 2200, max: 5200 },
+      drift: 0.28,
+      swirlStrength: 0,
+      swirlFrequency: 0,
+      maxParticles: 0,
+      exhaleMultiplier: 1,
+      emitRate: 7,
+      textFontFamily: "'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+      textPhrases: ['집에 가고 싶다', '퇴근하고 싶다', '오늘도 길다', '메일 또 왔다', '회의만 늘어', '일정 밀린다', '답장하기 싫다', '야근각이다'],
+      textStyles: {
+        fingertip: { fontSize: 15, alpha: 0.18, maxTokens: 14 },
+        inhaling: { fontSize: 17, alpha: 0.24, maxTokens: 16 },
+        burst: { fontSize: 27, alpha: 0.78, maxTokens: 8 },
+        stream: { fontSize: 21, alpha: 0.46, maxTokens: 12 },
+      },
+      emissions: {
+        fingertip: { count: 1, spreadX: 22, spreadY: 14, velocityX: 0.4, velocityY: { min: -1.2, max: -0.5 } },
+        exhaleBurst: { count: 2, spreadX: 28, spreadY: 16, velocityX: 1.6, velocityY: { min: -1.3, max: -0.3 } },
+        exhaleStream: { count: 1, spreadX: 24, spreadY: 14, velocityX: 1.2, velocityY: { min: -1.1, max: -0.25 } },
+      },
+      ember: {
+        coreRadius: 4.2,
+        haloRadius: 14,
+        sparkRadius: 1.1,
+        coreAlpha: 0.92,
+        haloAlpha: 0.26,
+        sparkAlpha: 0.8,
+      },
+    },
   };
 
   function get() {
@@ -247,7 +292,8 @@ const SmokeModes = (function () {
   }
 
   function toggle() {
-    current = current === 'realistic' ? 'artistic' : 'realistic';
+    const currentIndex = order.indexOf(current);
+    current = order[(currentIndex + 1) % order.length];
     return presets[current];
   }
 

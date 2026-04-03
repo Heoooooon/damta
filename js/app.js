@@ -117,23 +117,10 @@
       if (smokeResult.state !== 'idle') anyActive = true;
     }
 
-    // 임계값 자동 보정: inhaling 상태에서 tipToMouth 거리 기반으로 동적 조정
-    for (let h = 0; h < smokeResults.length; h++) {
-      const sr = smokeResults[h];
-      if (sr && sr.tipToMouth != null && sr.state === 'inhaling' && faceH > 0) {
-        const measuredRatio = sr.tipToMouth / faceH;
-        const baseEnter = 0.35;
-        const baseExit = 0.45;
-        const newEnter = Math.min(baseEnter, measuredRatio * 1.3);
-        const newExit = Math.min(baseExit, measuredRatio * 1.5);
-        smokeStateMachines[h].setDynamicThresholds(newEnter, newExit);
-      }
-    }
-
-    // inhaling 중인 손이 있으면 mouth 캔버스 좌표로 변환
+    // inhaling/exhaling 중인 손이 있으면 mouth 캔버스 좌표로 변환
     let inhalingMouth = null;
     for (let h = 0; h < smokeResults.length; h++) {
-      if (smokeResults[h].state === 'inhaling' && mouthSmoothed) {
+      if ((smokeResults[h].state === 'inhaling' || smokeResults[h].state === 'exhaling') && mouthSmoothed) {
         inhalingMouth = {
           x: canvas.width * (1 - mouthSmoothed.x),
           y: canvas.height * mouthSmoothed.y,

@@ -82,12 +82,25 @@ test('smoke state machine holds exhale long enough to feel like a breath', () =>
   assert.equal(fingertip.state, 'fingertip');
   assert.equal(fingertip.emission.type, 'fingertip');
 
+  // Build proximity over multiple frames near mouth
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.5 },
+    mouth,
+    faceHeight: 0.4,
+  }, 16);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.5 },
+    mouth,
+    faceHeight: 0.4,
+  }, 32);
   const inhaling = machine.update({
     poseActive: true,
     cigTip: { x: 0.5, y: 0.5 },
     mouth,
     faceHeight: 0.4,
-  }, 100);
+  }, 48);
   assert.equal(inhaling.state, 'inhaling');
   // inhaling 중에도 소량 fingertip 파티클 생성 (흡인 효과용)
   assert.equal(inhaling.emission.type, 'fingertip');
@@ -98,7 +111,7 @@ test('smoke state machine holds exhale long enough to feel like a breath', () =>
     cigTip: { x: 0.5, y: 0.76 },
     mouth,
     faceHeight: 0.4,
-  }, 420);
+  }, 120);
   assert.equal(exhaleBurst.state, 'exhaling');
   assert.equal(exhaleBurst.emission.type, 'exhale-burst');
   assert.deepEqual(exhaleBurst.emitPos, mouth);
@@ -118,7 +131,7 @@ test('smoke state machine holds exhale long enough to feel like a breath', () =>
     cigTip: null,
     mouth,
     faceHeight: 0.4,
-  }, 1250);
+  }, 1400);
   assert.equal(settled.state, 'idle');
   assert.equal(settled.emission.type, null);
 });
@@ -127,12 +140,25 @@ test('smoke state machine is forgiving enough when the hand is close to the mout
   const machine = createSmokeStateMachine();
   const mouth = { x: 0.5, y: 0.48 };
 
-  const inhaling = machine.update({
+  machine.update({
     poseActive: true,
     cigTip: { x: 0.5, y: 0.58 },
     mouth,
     faceHeight: 0.4,
   }, 0);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.58 },
+    mouth,
+    faceHeight: 0.4,
+  }, 16);
+
+  const inhaling = machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.58 },
+    mouth,
+    faceHeight: 0.4,
+  }, 32);
 
   assert.equal(inhaling.state, 'inhaling');
 });
@@ -141,19 +167,39 @@ test('smoke state machine keeps exhaling past the initial burst window', () => {
   const machine = createSmokeStateMachine();
   const mouth = { x: 0.5, y: 0.48 };
 
+  // Multiple frames near mouth to accumulate proximity
   machine.update({
     poseActive: true,
     cigTip: { x: 0.5, y: 0.5 },
     mouth,
     faceHeight: 0.4,
   }, 100);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.51 },
+    mouth,
+    faceHeight: 0.4,
+  }, 116);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.52 },
+    mouth,
+    faceHeight: 0.4,
+  }, 132);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.53 },
+    mouth,
+    faceHeight: 0.4,
+  }, 148);
 
+  // Move hand away to trigger exhale
   machine.update({
     poseActive: true,
     cigTip: { x: 0.5, y: 0.76 },
     mouth,
     faceHeight: 0.4,
-  }, 420);
+  }, 220);
 
   const sustained = machine.update({
     poseActive: false,

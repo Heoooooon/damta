@@ -18,11 +18,11 @@
   };
 
   const DEFAULT_SMOKE_OPTIONS = {
-    nearEnterRatio: 0.35,
-    nearExitRatio: 0.45,
-    inhaleMinDuration: 120,
-    exhaleMinMoveRatio: 0.12,
-    exhaleHoldDuration: 760,
+    nearEnterRatio: 0.45,
+    nearExitRatio: 0.60,
+    inhaleMinDuration: 60,
+    exhaleMinMoveRatio: 0.08,
+    exhaleHoldDuration: 1200,
     exhaleBurstDuration: 220,
     cooldownDuration: 140,
   };
@@ -343,26 +343,18 @@
     let blendFactor = 0;
     let inhaleStartTime = 0;
     let inhaleAnchorTip = null;
-    let nearMouth = false;
+    let proximityAccum = 0;
     let exhaleStartTime = -Infinity;
     let cooldownUntil = 0;
     let lastMouth = null;
     let exhaleDirection = null;
     let inhaleAccumulated = 0;
     let exhaleStrength = 1;
-    let dynamicEnterRatio = config.nearEnterRatio;
-    let dynamicExitRatio = config.nearExitRatio;
 
     function resetInhale() {
       inhaleStartTime = 0;
       inhaleAnchorTip = null;
-      inhaleAccumulated = 0;
       blendFactor = 0;
-    }
-
-    function setDynamicThresholds(enterRatio, exitRatio) {
-      dynamicEnterRatio = enterRatio;
-      dynamicExitRatio = exitRatio;
     }
 
     function update(input, now) {
@@ -411,7 +403,7 @@
 
       if (!poseActive || !cigTip) {
         smokeState = 'idle';
-        nearMouth = false;
+        proximityAccum = 0;
         resetInhale();
         return {
           state: 'idle',
@@ -424,7 +416,7 @@
 
       if (!mouth || !faceHeight) {
         smokeState = 'fingertip';
-        nearMouth = false;
+        proximityAccum = Math.max(0, proximityAccum - 0.03);
         resetInhale();
         return {
           state: 'fingertip',
@@ -436,67 +428,30 @@
       }
 
       const tipToMouth = dist(cigTip, mouth);
-      const enterThreshold = dynamicEnterRatio * faceHeight;
-      const exitThreshold = dynamicExitRatio * faceHeight;
+      const enterThreshold = config.nearEnterRatio * faceHeight;
+      const exitThreshold = config.nearExitRatio * faceHeight;
+      const proximityRatio = 1 - clamp01(tipToMouth / enterThreshold);
 
-      nearMouth = nearMouth
-        ? tipToMouth <= exitThreshold
-        : tipToMouth <= enterThreshold;
+      proximityAccum = clamp01(proximityAccum + proximityRatio * 0.22);
 
-      if (nearMouth) {
-        if (smokeState !== 'inhaling') {
-          inhaleStartTime = now;
-          inhaleAnchorTip = { x: cigTip.x, y: cigTip.y };
-        }
-
-        smokeState = 'inhaling';
-        inhaleAccumulated = clamp01(inhaleAccumulated + 0.02);
-        var inhaleDir = null;
-        if (cigTip && mouth) {
-          var idx = mouth.x - cigTip.x;
-          var idy = mouth.y - cigTip.y;
-          var ilen = Math.hypot(idx, idy);
-          if (ilen > 0.001) {
-            inhaleDir = { x: idx / ilen, y: idy / ilen };
-          }
-        }
-        var inhaleEm = createEmission('fingertip', 0, 0.35);
-        inhaleEm.direction = inhaleDir;
-        inhaleEm.inhaling = true;
-        return {
-          state: 'inhaling',
-          emitPos: cigTip,
-          isExhale: false,
-          emission: inhaleEm,
-          blendFactor: 0,
-          inhalingMouth: mouth,
-          tipToMouth,
-          thresholds: {
-            enter: enterThreshold,
-            exit: exitThreshold,
-          },
-        };
-      }
-
-      if (smokeState === 'inhaling' && now >= cooldownUntil) {
+      if (smokeState === 'inhaling') {
         const inhaleDuration = now - inhaleStartTime;
         const movedFromAnchor = inhaleAnchorTip
           ? dist(cigTip, inhaleAnchorTip)
           : tipToMouth;
         const exhaleDistance = config.exhaleMinMoveRatio * faceHeight;
 
-        const cond1 = inhaleDuration >= config.inhaleMinDuration;
-        const cond2 = tipToMouth >= exhaleDistance;
-        const cond3 = movedFromAnchor >= exhaleDistance * 0.6;
-        const metCount = (cond1 ? 1 : 0) + (cond2 ? 1 : 0) + (cond3 ? 1 : 0);
-
-        if (metCount >= 2) {
+        if (
+          inhaleDuration >= config.inhaleMinDuration &&
+          (tipToMouth >= exhaleDistance || movedFromAnchor >= exhaleDistance * 0.5)
+        ) {
           smokeState = 'exhaling';
           blendFactor = 0;
           exhaleStartTime = now;
-          nearMouth = false;
+          proximityAccum = 0;
           exhaleStrength = Math.max(0.3, inhaleAccumulated);
-          resetInhale();
+          inhaleStartTime = 0;
+          inhaleAnchorTip = null;
 
           exhaleDirection = null;
           if (cigTip && mouth) {
@@ -524,11 +479,50 @@
             },
           };
         }
+
+        if (tipToMouth >= exitThreshold * 1.5) {
+          proximityAccum = Math.max(0, proximityAccum - 0.1);
+        }
+      }
+
+      if (proximityAccum > 0.25) {
+        if (smokeState !== 'inhaling') {
+          inhaleStartTime = now;
+          inhaleAnchorTip = { x: cigTip.x, y: cigTip.y };
+        }
+
+        smokeState = 'inhaling';
+        inhaleAccumulated = clamp01(inhaleAccumulated + 0.025);
+        var inhaleDir = null;
+        if (cigTip && mouth) {
+          var idx = mouth.x - cigTip.x;
+          var idy = mouth.y - cigTip.y;
+          var ilen = Math.hypot(idx, idy);
+          if (ilen > 0.001) {
+            inhaleDir = { x: idx / ilen, y: idy / ilen };
+          }
+        }
+        var inhaleEm = createEmission('fingertip', 0, 0.35);
+        inhaleEm.direction = inhaleDir;
+        inhaleEm.inhaling = true;
+        return {
+          state: 'inhaling',
+          emitPos: cigTip,
+          isExhale: false,
+          emission: inhaleEm,
+          blendFactor: 0,
+          inhalingMouth: mouth,
+          tipToMouth,
+          thresholds: {
+            enter: enterThreshold,
+            exit: exitThreshold,
+          },
+        };
       }
 
       smokeState = 'fingertip';
       blendFactor = Math.max(0, blendFactor - 0.08);
-      resetInhale();
+      inhaleAccumulated = Math.max(0, inhaleAccumulated - 0.01);
       return {
         state: 'fingertip',
         emitPos: cigTip,
@@ -547,7 +541,7 @@
       return smokeState;
     }
 
-    return { update, getState, setDynamicThresholds };
+    return { update, getState };
   }
 
   return {
