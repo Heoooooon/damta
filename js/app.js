@@ -9,7 +9,6 @@
     InteractionCore.createSmokeStateMachine(),
     InteractionCore.createSmokeStateMachine(),
   ];
-  // 손별 위치 스무더 + 예측기
   const cigTipSmoothers = [
     TrackingSmoother.createPositionSmoother({ alpha: 0.4, deadzone: 0.003 }),
     TrackingSmoother.createPositionSmoother({ alpha: 0.4, deadzone: 0.003 }),
@@ -20,15 +19,15 @@
   ];
   const mouthSmoother = TrackingSmoother.createPositionSmoother({ alpha: 0.35, deadzone: 0.002 });
   let smootherEnabled = true;
+  let useMouseMode = false;
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
   }
   function resizeTrackingCanvas() {
-    const rect = video.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
+    const width = useMouseMode ? canvas.width : Math.max(1, Math.round(video.getBoundingClientRect().width));
+    const height = useMouseMode ? canvas.height : Math.max(1, Math.round(video.getBoundingClientRect().height));
     if (trackingCanvas.width !== width || trackingCanvas.height !== height) {
       trackingCanvas.width = width;
       trackingCanvas.height = height;
@@ -45,16 +44,32 @@
     const dt = lastTime ? timestamp - lastTime : 16;
     lastTime = timestamp;
 
-    await HandDetector.send(video);
-    await FaceDetector.send(video);
+    if (useMouseMode) {
+      await MouseController.send();
+    } else {
+      await HandDetector.send(video);
+      await FaceDetector.send(video);
+    }
 
-    const handStates = HandDetector.updateAll();
-    const allLandmarks = HandDetector.getAllLandmarks();
-    const mouth = FaceDetector.getMouth();
-    const mouthSmoothed = mouth ? mouthSmoother.update(mouth) : null;
-    if (!mouth) mouthSmoother.reset();
-    const faceH = FaceDetector.getFaceHeight();
-    const faceLandmarks = FaceDetector.getLandmarks();
+    let handStates, allLandmarks, mouth, mouthSmoothed, faceH, faceLandmarks;
+
+    if (useMouseMode) {
+      handStates = MouseController.getHandStates();
+      allLandmarks = MouseController.getAllLandmarks();
+      mouth = MouseController.getMouth();
+      mouthSmoothed = mouth ? mouthSmoother.update(mouth) : null;
+      if (!mouth) mouthSmoother.reset();
+      faceH = MouseController.getFaceHeight();
+      faceLandmarks = MouseController.getLandmarks();
+    } else {
+      handStates = HandDetector.updateAll();
+      allLandmarks = HandDetector.getAllLandmarks();
+      mouth = FaceDetector.getMouth();
+      mouthSmoothed = mouth ? mouthSmoother.update(mouth) : null;
+      if (!mouth) mouthSmoother.reset();
+      faceH = FaceDetector.getFaceHeight();
+      faceLandmarks = FaceDetector.getLandmarks();
+    }
 
     const now = performance.now();
     const currentMode = SmokeModes.get();
@@ -65,7 +80,6 @@
     for (let h = 0; h < handStates.length; h++) {
       const handState = handStates[h];
 
-      // cigTip 스무딩 + 예측
       let smoothedTip = null;
       if (smootherEnabled) {
         if (handState.cigTip) {
@@ -117,7 +131,6 @@
       if (smokeResult.state !== 'idle') anyActive = true;
     }
 
-    // inhaling/exhaling 중인 손이 있으면 mouth 캔버스 좌표로 변환
     let inhalingMouth = null;
     for (let h = 0; h < smokeResults.length; h++) {
       if ((smokeResults[h].state === 'inhaling' || smokeResults[h].state === 'exhaling') && mouthSmoothed) {
@@ -143,40 +156,39 @@
       });
     }
 
-    // Draw overlays for each detected hand
-    for (let h = 0; h < allLandmarks.length; h++) {
-      TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
-        handLandmarks: allLandmarks[h],
-        faceLandmarks: h === 0 ? faceLandmarks : null,
-        poseActive: handStates[h] ? handStates[h].poseActive : false,
-        mirrored: false,
-      });
-      TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
-        handLandmarks: allLandmarks[h],
-        faceLandmarks: h === 0 ? faceLandmarks : null,
-        poseActive: handStates[h] ? handStates[h].poseActive : false,
-        mirrored: true,
-        mainCanvas: true,
-      });
-    }
-    // Draw face only if no hands detected
-    if (allLandmarks.length === 0 && faceLandmarks) {
-      TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
-        handLandmarks: null,
-        faceLandmarks,
-        poseActive: false,
-        mirrored: false,
-      });
-      TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
-        handLandmarks: null,
-        faceLandmarks,
-        poseActive: false,
-        mirrored: true,
-        mainCanvas: true,
-      });
+    if (!useMouseMode) {
+      for (let h = 0; h < allLandmarks.length; h++) {
+        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+          handLandmarks: allLandmarks[h],
+          faceLandmarks: h === 0 ? faceLandmarks : null,
+          poseActive: handStates[h] ? handStates[h].poseActive : false,
+          mirrored: false,
+        });
+        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+          handLandmarks: allLandmarks[h],
+          faceLandmarks: h === 0 ? faceLandmarks : null,
+          poseActive: handStates[h] ? handStates[h].poseActive : false,
+          mirrored: true,
+          mainCanvas: true,
+        });
+      }
+      if (allLandmarks.length === 0 && faceLandmarks) {
+        TrackingOverlay.draw(trackingCtx, trackingCanvas.width, trackingCanvas.height, {
+          handLandmarks: null,
+          faceLandmarks,
+          poseActive: false,
+          mirrored: false,
+        });
+        TrackingOverlay.draw(ctx, canvas.width, canvas.height, {
+          handLandmarks: null,
+          faceLandmarks,
+          poseActive: false,
+          mirrored: true,
+          mainCanvas: true,
+        });
+      }
     }
 
-    // Draw embers for each active hand
     for (let h = 0; h < handStates.length; h++) {
       const hs = handStates[h];
       const tip = smoothedTips[h];
@@ -194,11 +206,12 @@
       }
     }
 
-    // Debug info (first hand)
     const handState = handStates[0];
     const smokeResult = smokeResults[0] || { state: 'idle', emission: { type: null } };
     const landmarks = allLandmarks[0] || null;
-    const analysis = handState.analysis || HandDetector.getLastAnalysis();
+    const analysis = useMouseMode
+      ? (handState.analysis || null)
+      : (handState.analysis || HandDetector.getLastAnalysis());
     let debugGap = null;
     let debugScore = null;
     let mouthDistDebug = null;
@@ -238,20 +251,26 @@
 
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.font = '14px monospace';
-    ctx.fillText('Hands: ' + (_lastDebug.hands || 0) + ' | Landmarks: ' + (_lastDebug.landmarks || 'NO'), 20, 30);
+    const modeLabel = useMouseMode ? '[Mouse]' : 'Hands: ' + (_lastDebug.hands || 0) + ' | Landmarks: ' + (_lastDebug.landmarks || 'NO');
+    ctx.fillText(modeLabel, 20, 30);
     ctx.fillText('Pose: ' + (_lastDebug.pose ? 'ACTIVE' : 'inactive'), 20, 50);
     ctx.fillText('State: ' + _lastDebug.state + ' / ' + (_lastDebug.emission || 'none'), 20, 70);
     ctx.fillText('Particles: ' + _lastDebug.particles, 20, 90);
     if (debugGap) {
       ctx.fillText('Gap/Palm: ' + debugGap + ' | Score: ' + debugScore, 20, 110);
       const f = _lastDebug.fingers;
-      ctx.fillText('idx=' + f.idx + ' mid=' + f.mid + ' ring=' + f.ring + ' pinky=' + f.pinky, 20, 130);
+      if (f) {
+        ctx.fillText('idx=' + f.idx + ' mid=' + f.mid + ' ring=' + f.ring + ' pinky=' + f.pinky, 20, 130);
+      }
     }
     if (mouthDistDebug) {
       ctx.fillText('MouthDist: ' + mouthDistDebug + ' / Threshold: ' + thresholdDebug, 20, 150);
     }
     ctx.fillText('Snapshots: ' + _snapshots.length + ' (press P)', 20, 170);
     ctx.fillText('Smoother: ' + (smootherEnabled ? 'ON' : 'OFF') + ' (press S)', 20, 190);
+    if (useMouseMode) {
+      ctx.fillText('Left-click: hold smoke | Right-click: set mouth | Arrows: move mouth', 20, 210);
+    }
 
     requestAnimationFrame(mainLoop);
   }
@@ -265,39 +284,49 @@
       await video.play();
       return true;
     } catch (err) {
-      errorEl.textContent = '웹캠 접근이 필요합니다.\n브라우저에서 카메라 권한을 허용해주세요.';
-      errorEl.hidden = false;
       return false;
     }
   }
 
   async function init() {
-    // Check MediaPipe loading
     const handErr = HandDetector.getError();
-    if (handErr) {
-      errorEl.textContent = handErr + '\n페이지를 새로고침해주세요.';
-      errorEl.hidden = false;
-      return;
-    }
-
     const faceErr = FaceDetector.getError();
-    if (faceErr) {
-      errorEl.textContent = faceErr + '\n페이지를 새로고침해주세요.';
+    const hasMediaPipe = !handErr && !faceErr;
+
+    let camReady = false;
+    if (hasMediaPipe) {
+      camReady = await initWebcam();
+    }
+
+    if (!camReady && hasMediaPipe) {
+      errorEl.textContent = '웹캠을 찾을 수 없습니다. 마우스 모드로 전환합니다.';
       errorEl.hidden = false;
+      setTimeout(function () {
+        errorEl.hidden = true;
+        useMouseMode = true;
+        MouseController.init();
+        resizeTrackingCanvas();
+        requestAnimationFrame(mainLoop);
+      }, 2000);
       return;
     }
 
-    const camReady = await initWebcam();
+    if (!hasMediaPipe) {
+      useMouseMode = true;
+      MouseController.init();
+      resizeTrackingCanvas();
+      requestAnimationFrame(mainLoop);
+      return;
+    }
+
     if (camReady) {
       requestAnimationFrame(mainLoop);
     }
   }
 
-  // --- Debug snapshots ---
   let _lastDebug = {};
   const _snapshots = [];
 
-  // --- Keyboard shortcuts ---
   const modeBtn = document.getElementById('modeBtn');
   modeBtn.textContent = SmokeModes.getName();
 
@@ -329,6 +358,14 @@
       console.log('Smoother: ' + (smootherEnabled ? 'ON' : 'OFF'));
     } else if (e.code === 'KeyH') {
       video.classList.toggle('hidden');
+    } else if (e.code === 'KeyC') {
+      useMouseMode = !useMouseMode;
+      if (useMouseMode) {
+        MouseController.init();
+        console.log('Mode: Mouse');
+      } else {
+        console.log('Mode: Webcam');
+      }
     }
   });
 
@@ -336,7 +373,6 @@
     applyMode(SmokeModes.toggle());
   });
 
-  // Guide modal — start app only after user clicks
   const guideModal = document.getElementById('guideModal');
   const guideStart = document.getElementById('guideStart');
   const guideClose = document.getElementById('guideClose');
@@ -349,6 +385,5 @@
   guideStart.addEventListener('click', dismissGuide);
   guideClose.addEventListener('click', dismissGuide);
 
-  // Export for other modules
   window.APP = { canvas, ctx, video };
 })();
