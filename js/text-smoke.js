@@ -105,15 +105,15 @@
     const spreadX = phase === 'burst' ? 26 : phase === 'stream' ? 20 : 10;
     const spreadY = phase === 'burst' ? 14 : phase === 'stream' ? 12 : 7;
     const driftX = phase === 'fingertip'
-      ? randomBetween(-0.25, 0.25)
+      ? randomBetween(-0.3, 0.3)
       : phase === 'burst'
-        ? randomBetween(-0.18, 0.18)
-        : randomBetween(-0.12, 0.12);
+        ? randomBetween(-0.2, 0.2)
+        : randomBetween(-0.15, 0.15);
     const driftY = phase === 'fingertip'
-      ? randomBetween(-0.5, -0.15)
+      ? randomBetween(-0.7, -0.2)
       : phase === 'burst'
-        ? randomBetween(-0.4, -0.1)
-        : randomBetween(-0.25, -0.05);
+        ? randomBetween(-0.55, -0.15)
+        : randomBetween(-0.35, -0.08);
 
     return {
       id: nextId++,
@@ -123,8 +123,8 @@
       displayText: text,
       x: x + randomBetween(-spreadX, spreadX),
       y: y + randomBetween(-spreadY, spreadY),
-      vx: dirX * randomBetween(0.5, 1.5) * scale + driftX,
-      vy: dirY * randomBetween(0.5, 1.2) * scale + driftY,
+      vx: dirX * randomBetween(0.6, 1.8) * scale + driftX,
+      vy: dirY * randomBetween(0.6, 1.5) * scale + driftY,
       baseAlpha: style.alpha,
       size: style.fontSize * randomBetween(0.94, 1.08),
       rotation: randomBetween(-0.08, 0.08),
@@ -157,10 +157,10 @@
   }
 
   function getPhaseLift(phase) {
-    if (phase === 'fingertip') return 0.01;
-    if (phase === 'burst') return 0.007;
-    if (phase === 'stream') return 0.006;
-    return 0.006;
+    if (phase === 'fingertip') return 0.035;
+    if (phase === 'burst') return 0.025;
+    if (phase === 'stream') return 0.02;
+    return 0.02;
   }
 
   function getPhaseFade(token, lifeRatio) {
