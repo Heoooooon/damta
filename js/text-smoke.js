@@ -68,12 +68,12 @@
   function decomposeText(text, lifeRatio) {
     const chars = Array.from(text || '');
     if (chars.length <= 1) return text;
-    if (lifeRatio < 0.3) return text;
-    const fadeStart = 0.3;
+    if (lifeRatio < 0.2) return text;
+    if (lifeRatio >= 0.85) return '';
+    const fadeStart = 0.2;
     const fadeEnd = 0.85;
-    if (lifeRatio >= fadeEnd) return '';
     const fadeT = (lifeRatio - fadeStart) / (fadeEnd - fadeStart);
-    const keepCount = Math.max(1, Math.ceil(chars.length * (1 - fadeT)));
+    const keepCount = Math.max(1, Math.ceil(chars.length * (1 - fadeT * fadeT)));
     return chars.slice(0, keepCount).join('');
   }
 
@@ -102,18 +102,18 @@
     const dirX = direction && typeof direction.x === 'number' ? direction.x : -0.8;
     const dirY = direction && typeof direction.y === 'number' ? direction.y : -0.2;
     const scale = clamp(strength || 1, 0.6, 1.8);
-    const spreadX = phase === 'burst' ? 26 : phase === 'stream' ? 20 : 10;
-    const spreadY = phase === 'burst' ? 14 : phase === 'stream' ? 12 : 7;
+    const spreadX = phase === 'burst' ? 30 : phase === 'stream' ? 22 : 12;
+    const spreadY = phase === 'burst' ? 16 : phase === 'stream' ? 14 : 8;
     const driftX = phase === 'fingertip'
-      ? randomBetween(-0.3, 0.3)
+      ? randomBetween(-0.25, 0.25)
       : phase === 'burst'
-        ? randomBetween(-0.2, 0.2)
-        : randomBetween(-0.15, 0.15);
+        ? randomBetween(-0.18, 0.18)
+        : randomBetween(-0.12, 0.12);
     const driftY = phase === 'fingertip'
-      ? randomBetween(-0.7, -0.2)
+      ? randomBetween(-0.6, -0.2)
       : phase === 'burst'
-        ? randomBetween(-0.55, -0.15)
-        : randomBetween(-0.35, -0.08);
+        ? randomBetween(-0.5, -0.15)
+        : randomBetween(-0.3, -0.08);
 
     return {
       id: nextId++,
@@ -123,16 +123,17 @@
       displayText: text,
       x: x + randomBetween(-spreadX, spreadX),
       y: y + randomBetween(-spreadY, spreadY),
-      vx: dirX * randomBetween(0.6, 1.8) * scale + driftX,
-      vy: dirY * randomBetween(0.6, 1.5) * scale + driftY,
+      vx: dirX * randomBetween(0.4, 1.4) * scale + driftX,
+      vy: dirY * randomBetween(0.4, 1.2) * scale + driftY,
       baseAlpha: style.alpha,
-      size: style.fontSize * randomBetween(0.94, 1.08),
-      rotation: randomBetween(-0.08, 0.08),
-      spin: randomBetween(-0.0015, 0.0015),
+      size: style.fontSize * randomBetween(0.85, 1.15),
+      sizeGrow: phase === 'burst' ? 0.012 : phase === 'stream' ? 0.008 : 0.006,
+      rotation: randomBetween(-0.12, 0.12),
+      spin: randomBetween(-0.003, 0.003),
       life: 0,
       maxLife: randomBetween(
-        phase === 'burst' ? 2200 : phase === 'stream' ? 3200 : 1400,
-        phase === 'burst' ? 3000 : phase === 'stream' ? 4200 : 2000
+        phase === 'burst' ? 2400 : phase === 'stream' ? 3600 : 1600,
+        phase === 'burst' ? 3200 : phase === 'stream' ? 4800 : 2400
       ),
     };
   }
@@ -157,10 +158,10 @@
   }
 
   function getPhaseLift(phase) {
-    if (phase === 'fingertip') return 0.035;
-    if (phase === 'burst') return 0.025;
-    if (phase === 'stream') return 0.02;
-    return 0.02;
+    if (phase === 'fingertip') return 0.028;
+    if (phase === 'burst') return 0.018;
+    if (phase === 'stream') return 0.014;
+    return 0.014;
   }
 
   function getPhaseFade(token, lifeRatio) {
@@ -622,12 +623,15 @@
         }
       }
 
-      token.vx *= token.phase === 'burst' ? 0.986 : 0.992;
-      token.vy *= token.phase === 'fingertip' ? 0.988 : 0.994;
+      token.vx *= token.phase === 'burst' ? 0.982 : 0.988;
+      token.vy *= token.phase === 'fingertip' ? 0.984 : 0.99;
       token.vy -= getPhaseLift(token.phase) * step;
       token.x += token.vx * step;
       token.y += token.vy * step;
       token.rotation += token.spin * dt;
+      if (token.sizeGrow) {
+        token.size += token.sizeGrow * step;
+      }
       updateDisplayText(token, inMouth);
     }
 
