@@ -9,8 +9,9 @@ Mime taking a drag from a cigarette and **breathe out real-time smoke** — or *
 
 [**▶ Try it live — damta.vercel.app**](https://damta.vercel.app)
 
-<!-- TODO: drop a demo GIF here. A 5–8s loop of exhaling text-smoke sells this in one glance.
-     ![Damta demo](docs/demo.gif) -->
+[![Damta — text smoke demo](docs/demo.gif)](https://damta.vercel.app)
+
+<sub>Mouse-mode capture. With a webcam, your real hand and breath drive it.</sub>
 
 ![status](https://img.shields.io/badge/build-no%20build%20step-blue)
 ![tech](https://img.shields.io/badge/MediaPipe-Hands%20%2B%20FaceMesh-ff6f00)
