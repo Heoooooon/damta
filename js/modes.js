@@ -264,7 +264,7 @@ const SmokeModes = (function () {
       exhaleMultiplier: 1,
       emitRate: 7,
       textFontFamily: "'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
-      textPhrases: ['야구 개빡친다', '불펜 또 터짐', '잔루 미쳤다', '수비 왜 저래', '직관 괜히 왔다', '감독 뭐하냐', '초구딱 그만', '오늘도 졌다'],
+      textPhrases: ['시발 또 야근', '존나 빡친다', '퇴사가 답이다', '에라 모르겠다', '못 해먹겠다', '담타나 가자', '내가 왜 사냐', '현타 온다 진짜', '월급 루팡 중', '다 때려치워', '회의 또 회의', '칼퇴 마렵다', '됐고 집에 간다', '나 좀 살자', '보고서 좆까', '될 대로 돼라'],
       textStyles: {
         fingertip: { fontSize: 9, alpha: 0.085, maxTokens: 10 },
         inhaling: { fontSize: 10, alpha: 0.105, maxTokens: 8 },

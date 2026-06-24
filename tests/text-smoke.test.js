@@ -80,7 +80,7 @@ test('smoke mode defaults to text smoke and still cycles through all presets', (
   assert.equal(smokeModes.getName(), 'Text Smoke');
   assert.equal(smokeModes.get().renderStyle, 'text-smoke');
   assert.ok(Array.isArray(smokeModes.get().textPhrases));
-  assert.ok(smokeModes.get().textPhrases.includes('야구 개빡친다'));
+  assert.ok(smokeModes.get().textPhrases.includes('시발 또 야근'));
   assert.ok(!smokeModes.get().textPhrases.includes('집에 가고 싶다'));
 
   const realistic = smokeModes.toggle();

@@ -607,12 +607,15 @@
         const offsetX = jitterSeed * Math.min(field.cellW * 0.22, 2.4);
         const offsetY = Math.cos(row * 5.17 + col * 2.31) * Math.min(field.cellH * 0.12, 1.4);
         const densityClamped = clamp(density, 0, 1);
+        // Fade the rendered smoke to transparent as it nears the top edge so the
+        // plume dissolves instead of ending in a hard clipped line at the ceiling.
+        const topAlphaFade = clamp(row / (field.rows * 0.34), 0, 1);
         cells.push({
           row: row,
           col: col,
           char: chooseGlyph(String.fromCodePoint(code), densityClamped, row, col),
           density: densityClamped,
-          alpha: clamp(density * 0.92, 0, 1),
+          alpha: clamp(density * 0.92, 0, 1) * topAlphaFade,
           x: col * field.cellW + field.cellW * 0.5,
           y: row * field.cellH + field.cellH * 0.5,
           offsetX: offsetX,
