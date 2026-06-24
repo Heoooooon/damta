@@ -19,6 +19,10 @@
   let flowBiasX = 0;
   let flowBiasY = 0;
   let renderQualityScale = 1;
+  let frameCanvas = null;
+  let frameCtx = null;
+  let persistenceCanvas = null;
+  let persistenceCtx = null;
   const emitBudgets = Object.create(null);
 
   function clamp(value, min, max) {
@@ -641,6 +645,56 @@
     };
   }
 
+  function ensureRenderBuffers(ctx) {
+    if (typeof document === 'undefined' || !ctx || !ctx.canvas) return null;
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    if (!width || !height) return null;
+
+    if (!frameCanvas) {
+      frameCanvas = document.createElement('canvas');
+      frameCtx = frameCanvas.getContext('2d');
+      persistenceCanvas = document.createElement('canvas');
+      persistenceCtx = persistenceCanvas.getContext('2d');
+    }
+
+    if (
+      frameCanvas.width !== width ||
+      frameCanvas.height !== height ||
+      persistenceCanvas.width !== width ||
+      persistenceCanvas.height !== height
+    ) {
+      frameCanvas.width = width;
+      frameCanvas.height = height;
+      persistenceCanvas.width = width;
+      persistenceCanvas.height = height;
+      frameCtx.clearRect(0, 0, width, height);
+      persistenceCtx.clearRect(0, 0, width, height);
+    }
+
+    return { width, height };
+  }
+
+  function clearRenderBuffers() {
+    if (frameCtx && frameCanvas) {
+      frameCtx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+    }
+    if (persistenceCtx && persistenceCanvas) {
+      persistenceCtx.clearRect(0, 0, persistenceCanvas.width, persistenceCanvas.height);
+    }
+  }
+
+  function fadePersistenceBuffer(width, height, dt) {
+    if (!persistenceCtx) return;
+    const normalizedDt = Math.max(0.5, Math.min(3, (dt || 16.6667) / 16.6667));
+    const fade = Math.max(0.026, Math.min(0.075, normalizedDt * 0.04));
+    persistenceCtx.save();
+    persistenceCtx.globalCompositeOperation = 'destination-out';
+    persistenceCtx.fillStyle = 'rgba(0,0,0,' + fade.toFixed(4) + ')';
+    persistenceCtx.fillRect(0, 0, width, height);
+    persistenceCtx.restore();
+  }
+
   function renderDensityGrid(ctx, grid) {
     if (!grid || !grid.cells.length) return;
 
@@ -669,6 +723,10 @@
 
     for (let i = 0; i < grid.cells.length; i++) {
       const cell = grid.cells[i];
+      // Thin overlapping glyphs into a staggered lattice so rising letters keep
+      // diagonal breathing room and stay legible instead of merging into a mush.
+      // Dense cores (bright heads) always draw; only the faint haze is thinned.
+      if (cell.density < 0.5 && (cell.row + cell.col) % 2 !== 0) continue;
       const baseSize = grid.cellH * 0.86;
       const sizeScale = cell.density > 0.6 ? 1.15 : cell.density > 0.3 ? 1.0 : 0.75;
       const baseFontSize = Math.round(baseSize * sizeScale);
@@ -806,6 +864,9 @@
     for (let i = 0; i < count; i++) {
       const token = createToken(mode, phase, x, y, emission.direction, strength, phraseOverride);
       if (phase === 'burst' && i === 0) {
+        // Only the newest burst phrase stays readable; retire older foreground
+        // phrases so they never stack into an illegible blob at the mouth.
+        for (let k = 0; k < active.length; k++) active[k].pretextVisible = false;
         token.pretext = token.text;
         token.pretextVisible = true;
         token.pretextHold = 720;
