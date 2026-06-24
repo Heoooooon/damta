@@ -7,6 +7,8 @@ const FaceDetector = (function () {
   let frameCount = 0;
   let initError = null;
   const DETECT_INTERVAL = 3;
+  const MISS_GRACE_DETECT_FRAMES = 8;
+  let missedDetectFrames = 0;
 
   let faceMesh;
   try {
@@ -25,15 +27,22 @@ const FaceDetector = (function () {
     faceMesh.onResults((results) => {
       if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         const lm = results.multiFaceLandmarks[0];
+        missedDetectFrames = 0;
         latestLandmarks = lm;
         prevMouthPos = mouthPos ? { x: mouthPos.x, y: mouthPos.y } : null;
         mouthPos = { x: lm[13].x, y: lm[13].y };
         faceHeight = Math.hypot(lm[10].x - lm[152].x, lm[10].y - lm[152].y);
       } else {
-        latestLandmarks = null;
-        mouthPos = null;
-        prevMouthPos = null;
-        faceHeight = 0;
+        // 손이 입 근처를 가리면 FaceMesh가 1~수 프레임 얼굴을 놓칠 수 있다.
+        // 즉시 mouth를 null로 지우면 smoke state가 깜빡이므로 짧은 dropout은 마지막 값을 유지한다.
+        missedDetectFrames++;
+        if (missedDetectFrames >= MISS_GRACE_DETECT_FRAMES) {
+          latestLandmarks = null;
+          mouthPos = null;
+          prevMouthPos = null;
+          interpMouthPos = null;
+          faceHeight = 0;
+        }
       }
     });
   } catch (err) {
@@ -85,5 +94,12 @@ const FaceDetector = (function () {
     return initError;
   }
 
-  return { send, getMouth, getFaceHeight, getLandmarks, getError };
+  function getDebugInfo() {
+    return {
+      missedDetectFrames,
+      mouthHeld: missedDetectFrames > 0 && !!mouthPos,
+    };
+  }
+
+  return { send, getMouth, getFaceHeight, getLandmarks, getError, getDebugInfo };
 })();

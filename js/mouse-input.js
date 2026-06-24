@@ -45,6 +45,30 @@ const MouseController = (function () {
     active = true;
   }
 
+  function setMouth(pos) {
+    if (!pos) return;
+    mouthPos = {
+      x: Math.max(0.05, Math.min(0.95, pos.x)),
+      y: Math.max(0.05, Math.min(0.95, pos.y)),
+    };
+    active = true;
+  }
+
+  function setPointer(pos, isPoseActive) {
+    if (!pos) {
+      mousePos = null;
+      poseActive = false;
+      return;
+    }
+
+    mousePos = {
+      x: Math.max(0.05, Math.min(0.95, pos.x)),
+      y: Math.max(0.05, Math.min(0.95, pos.y)),
+    };
+    poseActive = !!isPoseActive;
+    active = true;
+  }
+
   function getHandStates() {
     if (!active || !mousePos) {
       return [
@@ -109,6 +133,8 @@ const MouseController = (function () {
 
   return {
     init,
+    setMouth,
+    setPointer,
     send,
     getHandStates,
     getAllLandmarks,

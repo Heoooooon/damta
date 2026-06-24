@@ -62,6 +62,9 @@ const SmokeSystem = (function () {
       lightScale: 1.8,
       lightOffsetX: -0.08,
       lightOffsetY: -0.16,
+      emissionType: null,
+      forwardDriftX: 0,
+      inhaling: false,
       history: [],
       wobbleOffset: 0,
       lightSprite: null,
@@ -201,23 +204,36 @@ const SmokeSystem = (function () {
       p.y = cy + (Math.random() - 0.5) * profile.spreadY;
 
       var dir = emission && emission.direction;
-      if (dir) {
-        // 방향성 속도: direction 기반 + cone spread
-        var isInhaling = !!(emission && emission.inhaling);
-        var bias = isInhaling ? 0.9 : 0.7;
-        if (emission.type === 'exhale-stream') {
-          bias = 0.7 - (emission.progress || 0) * 0.4;
-        }
-        var speed = Math.abs(profile.velocityY.min) * (isInhaling ? 1.8 : 1.2);
-        var coneAngle = (Math.random() - 0.5) * (isInhaling ? 0.3 : 0.7);
-        var cosA = Math.cos(coneAngle);
-        var sinA = Math.sin(coneAngle);
+      var isInhaling = !!(emission && emission.inhaling);
+      var isExhale = emission.type === 'exhale-burst' || emission.type === 'exhale-stream';
+      if (dir && isExhale) {
+        // Mouth smoke should read as breath: project forward first, then rise/spread.
+        var horizontalSign = dir.x < 0 ? -1 : 1;
+        var jetProgress = emission.type === 'exhale-stream' ? (emission.progress || 0) : 0;
+        var jetBias = emission.type === 'exhale-burst'
+          ? 0.58
+          : Math.max(0.42, 0.56 - jetProgress * 0.12);
+        var speed = Math.max(Math.abs(profile.velocityY.min), profile.velocityX) * (emission.type === 'exhale-burst' ? 0.92 : 0.82);
+        var coneAngle = (Math.random() - 0.5) * (emission.type === 'exhale-burst' ? 0.42 : 0.58);
+        var forwardX = horizontalSign * Math.cos(coneAngle);
+        var forwardY = -0.16 + Math.sin(coneAngle) * 0.18;
+        p.forwardDriftX = horizontalSign * (emission.type === 'exhale-burst' ? 0.032 : 0.026);
+        p.vx = forwardX * speed * jetBias + (Math.random() - 0.5) * profile.velocityX * (1 - jetBias) * 0.6;
+        p.vy = forwardY * speed * jetBias +
+          (profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min)) * (1 - jetBias) * 0.55;
+      } else if (dir && isInhaling) {
+        // Inhaling ember smoke is pulled toward the mouth, but remains a small wisp.
+        var inhaleSpeed = Math.abs(profile.velocityY.min) * 0.9;
+        var inhaleCone = (Math.random() - 0.5) * 0.26;
+        var cosA = Math.cos(inhaleCone);
+        var sinA = Math.sin(inhaleCone);
         var rotX = dir.x * cosA - dir.y * sinA;
         var rotY = dir.x * sinA + dir.y * cosA;
-        p.vx = rotX * speed * bias + (Math.random() - 0.5) * profile.velocityX * (1 - bias);
-        p.vy = rotY * speed * bias + (profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min)) * (1 - bias);
+        p.vx = rotX * inhaleSpeed * 0.72 + (Math.random() - 0.5) * profile.velocityX * 0.28;
+        p.vy = rotY * inhaleSpeed * 0.72 + (profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min)) * 0.28;
       } else {
-        p.vx = (Math.random() - 0.5) * profile.velocityX;
+        // Ember smoke is not a breath plume: it curls mostly upward from the flame.
+        p.vx = (Math.random() - 0.5) * profile.velocityX * 0.55;
         p.vy = profile.velocityY.min + Math.random() * (profile.velocityY.max - profile.velocityY.min);
       }
       p.originX = p.x;
@@ -226,7 +242,12 @@ const SmokeSystem = (function () {
       p.size = mode.startSize * profile.sizeMultiplier * (0.72 + Math.random() * 0.35);
       p.growTo = mode.maxSize * profile.sizeMultiplier * (0.7 + Math.random() * 0.4);
       p.alpha = mode.startAlpha;
+      p.emissionType = emission.type;
+      p.inhaling = isInhaling;
       p.maxAlpha = mode.maxAlpha * profile.alphaMultiplier * (0.82 + Math.random() * 0.28);
+      if (p.inhaling) {
+        p.maxAlpha *= 1.18;
+      }
       p.life = 0;
       p.maxLife =
         (mode.lifetime.min + Math.random() * (mode.lifetime.max - mode.lifetime.min)) *
@@ -236,8 +257,11 @@ const SmokeSystem = (function () {
       p.mode = mode;
       p.riseAccel = profile.riseAccel * (0.8 + Math.random() * 0.45);
       p.turbulence = profile.turbulence * (0.7 + Math.random() * 0.65);
+      if (isExhale) {
+        p.riseAccel *= 0.52;
+      }
       p.drag = profile.drag;
-      p.lateralDamping = profile.lateralDamping;
+      p.lateralDamping = isExhale ? Math.max(profile.lateralDamping, 0.986) : profile.lateralDamping;
       p.trailWidth = profile.trailWidth;
       p.trailAlpha = profile.trailAlpha;
       p.strandiness = profile.strandiness;
@@ -262,6 +286,12 @@ const SmokeSystem = (function () {
       p.history.length = 0;
       p.wobbleOffset = Math.random() * 1000;
       p.lightSprite = createSprite(mode.lightColor || 'rgba(255,244,228,', Math.ceil(Math.max(mode.maxSize, p.growTo)));
+
+      if (p.inhaling) {
+        p.trailAlpha *= 1.12;
+        p.veilAlphaMultiplier *= 1.08;
+        p.lightAlphaMultiplier *= 1.08;
+      }
 
       active.push(p);
     }
@@ -320,12 +350,13 @@ const SmokeSystem = (function () {
         p.vx += drift * turbulence * 0.08 * step;
         p.vx += shear * (0.03 + unravelFactor * 0.12) * p.turbulence * step;
         const wobblePhase = p.life * 0.003 + p.wobbleOffset;
-        p.vx += Math.sin(wobblePhase) * p.curlStrength * (0.06 + unravelFactor * 0.22) * step;
+        const isExhaleParticle = p.emissionType === 'exhale-burst' || p.emissionType === 'exhale-stream';
+        p.vx += Math.sin(wobblePhase) * p.curlStrength * (isExhaleParticle ? 0.025 + unravelFactor * 0.08 : 0.06 + unravelFactor * 0.22) * step;
         p.vx += SmokeCore.getLateralSpreadForce(p, {
           drift,
           shear,
           wobblePhase,
-          centerOffset: p.originX - p.x,
+          centerOffset: isExhaleParticle ? 0 : p.originX - p.x,
           lifeRatio,
           step,
         });
@@ -348,26 +379,33 @@ const SmokeSystem = (function () {
         if (adist > 1) {
           // 거리에 반비례하는 강한 흡입력
           const proximity = Math.min(1, 120 / adist);
-          const strength = 0.35 * proximity * proximity;
+          const strength = 0.18 * proximity * proximity;
           p.vx += (adx / adist) * strength * step;
           p.vy += (ady / adist) * strength * step;
           // 기존 속도를 mouth 방향으로 정렬 (저항 감소)
-          p.vx *= 0.92;
-          p.vy *= 0.92;
+          p.vx *= 0.96;
+          p.vy *= 0.96;
           // 가까울수록 빠르게 축소 + 소멸
-          const shrink = 0.96 - proximity * 0.06;
+          const shrink = 0.985 - proximity * 0.025;
           p.growTo *= shrink;
           p.size *= shrink;
-          p.life += dt * (0.5 + proximity * 1.5);
+          p.life += dt * (0.18 + proximity * 0.62);
         }
-        if (adist < 18) {
+        if (adist < 8) {
           p.life = p.maxLife;
         }
       }
 
       const prevX = p.x;
       const prevY = p.y;
-      p.vy -= p.riseAccel * step;
+      if (p.emissionType === 'exhale-burst' || p.emissionType === 'exhale-stream') {
+        var jetLife = Math.min(1, lifeRatio / 0.34);
+        p.vy -= p.riseAccel * (0.32 + jetLife * 1.05) * step;
+        p.vx += p.forwardDriftX * (1 - jetLife * 0.45) * step;
+        p.vx *= Math.pow(0.996 - jetLife * 0.004, step);
+      } else {
+        p.vy -= p.riseAccel * step;
+      }
       p.x += p.vx * step;
       p.y += p.vy * step;
       p.vx *= Math.pow(p.lateralDamping, step);
@@ -439,6 +477,30 @@ const SmokeSystem = (function () {
     return active.length;
   }
 
+  function getDebugSnapshot() {
+    return active.map(function (p) {
+      return {
+        type: p.emissionType,
+        x: p.x,
+        y: p.y,
+        vx: p.vx,
+        vy: p.vy,
+        alpha: p.alpha,
+        lifeRatio: p.maxLife ? p.life / p.maxLife : 0,
+      };
+    });
+  }
+
+  function reset() {
+    while (active.length) {
+      release(active.pop());
+    }
+    dormantTime = 0;
+    for (const key in emitBudgets) {
+      delete emitBudgets[key];
+    }
+  }
+
   function drawEmber(ctx, normX, normY, canvasW, canvasH, mode, state, timeMs) {
     const ember = SmokeCore.getEmberProfile(mode, state, (timeMs * 0.002) % 1);
     if (!ember.visible) return;
@@ -476,5 +538,5 @@ const SmokeSystem = (function () {
     ctx.restore();
   }
 
-  return { emit, update, drawEmber, getActiveCount };
+  return { emit, update, drawEmber, getActiveCount, getDebugSnapshot, reset };
 })();

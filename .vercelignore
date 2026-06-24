@@ -1,0 +1,12 @@
+.DS_Store
+.claude/
+.opencode/
+.playwright-cli/
+.superpowers/
+.git/
+.vercel/
+CLAUDE.md
+docs/
+output/
+tests/
+node_modules/

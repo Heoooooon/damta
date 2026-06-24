@@ -21,7 +21,10 @@
     nearEnterRatio: 0.45,
     nearExitRatio: 0.60,
     inhaleMinDuration: 60,
+    inhaleFullChargeDuration: 720,
+    inhaleChargeDecayDuration: 460,
     exhaleMinMoveRatio: 0.08,
+    exhaleMinStrength: 0.35,
     exhaleHoldDuration: 1200,
     exhaleBurstDuration: 220,
     cooldownDuration: 140,
@@ -46,6 +49,18 @@
 
   function dot(a, b) {
     return a.x * b.x + a.y * b.y;
+  }
+
+
+
+  function screenDirection(from, to) {
+    const dx = from.x - to.x; // canvas draws normalized x as 1 - x
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    if (!length) {
+      return { x: 0, y: 0 };
+    }
+    return { x: dx / length, y: dy / length };
   }
 
   function midpoint(a, b) {
@@ -348,8 +363,9 @@
     let cooldownUntil = 0;
     let lastMouth = null;
     let exhaleDirection = null;
-    let inhaleAccumulated = 0;
+    let inhaleCharge = 0;
     let exhaleStrength = 1;
+    let lastUpdateTime = null;
 
     function resetInhale() {
       inhaleStartTime = 0;
@@ -357,7 +373,30 @@
       blendFactor = 0;
     }
 
+    function getFrameDelta(now) {
+      if (lastUpdateTime == null) {
+        lastUpdateTime = now;
+        return 16;
+      }
+
+      const dt = Math.max(0, Math.min(160, now - lastUpdateTime));
+      lastUpdateTime = now;
+      return dt;
+    }
+
+    function addInhaleCharge(dt, proximityRatio) {
+      const duration = Math.max(1, config.inhaleFullChargeDuration);
+      const proximityBoost = 0.65 + clamp01(proximityRatio) * 0.5;
+      inhaleCharge = clamp01(inhaleCharge + (dt / duration) * proximityBoost);
+    }
+
+    function decayInhaleCharge(dt, multiplier) {
+      const duration = Math.max(1, config.inhaleChargeDecayDuration);
+      inhaleCharge = Math.max(0, inhaleCharge - (dt / duration) * (multiplier || 1));
+    }
+
     function update(input, now) {
+      const dt = getFrameDelta(now);
       const poseActive = !!(input && input.poseActive);
       const cigTip = input ? input.cigTip : null;
       const mouth = input ? input.mouth : null;
@@ -405,6 +444,7 @@
         smokeState = 'idle';
         proximityAccum = 0;
         resetInhale();
+        inhaleCharge = 0;
         return {
           state: 'idle',
           emitPos: null,
@@ -417,6 +457,7 @@
       if (!mouth || !faceHeight) {
         smokeState = 'fingertip';
         proximityAccum = Math.max(0, proximityAccum - 0.03);
+        decayInhaleCharge(dt, 0.55);
         resetInhale();
         return {
           state: 'fingertip',
@@ -432,6 +473,26 @@
       const exitThreshold = config.nearExitRatio * faceHeight;
       const proximityRatio = 1 - clamp01(tipToMouth / enterThreshold);
 
+      if (now < cooldownUntil) {
+        smokeState = 'fingertip';
+        proximityAccum = 0;
+        inhaleCharge = 0;
+        resetInhale();
+        return {
+          state: 'fingertip',
+          emitPos: cigTip,
+          isExhale: false,
+          emission: createEmission('fingertip', 0, 0.72),
+          blendFactor: 0,
+          coolingDown: true,
+          tipToMouth,
+          thresholds: {
+            enter: enterThreshold,
+            exit: exitThreshold,
+          },
+        };
+      }
+
       proximityAccum = clamp01(proximityAccum + proximityRatio * 0.22);
 
       if (smokeState === 'inhaling') {
@@ -440,27 +501,30 @@
           ? dist(cigTip, inhaleAnchorTip)
           : tipToMouth;
         const exhaleDistance = config.exhaleMinMoveRatio * faceHeight;
+        const anchorToMouth = inhaleAnchorTip
+          ? dist(inhaleAnchorTip, mouth)
+          : tipToMouth;
+        const movedFarEnough = movedFromAnchor >= exhaleDistance * 1.25;
+        const leftMouthZone = tipToMouth >= enterThreshold * 0.85;
+        const movingAwayFromMouth = tipToMouth >= anchorToMouth + exhaleDistance * 0.35;
 
         if (
           inhaleDuration >= config.inhaleMinDuration &&
-          (tipToMouth >= exhaleDistance || movedFromAnchor >= exhaleDistance * 0.5)
+          movedFarEnough &&
+          (leftMouthZone || movingAwayFromMouth)
         ) {
           smokeState = 'exhaling';
           blendFactor = 0;
           exhaleStartTime = now;
           proximityAccum = 0;
-          exhaleStrength = Math.max(0.3, inhaleAccumulated);
+          exhaleStrength = Math.max(config.exhaleMinStrength, inhaleCharge);
+          inhaleCharge = 0;
           inhaleStartTime = 0;
           inhaleAnchorTip = null;
 
           exhaleDirection = null;
           if (cigTip && mouth) {
-            const ddx = cigTip.x - mouth.x;
-            const ddy = cigTip.y - mouth.y;
-            const dlen = Math.hypot(ddx, ddy);
-            if (dlen > 0.001) {
-              exhaleDirection = { x: ddx / dlen, y: ddy / dlen };
-            }
+            exhaleDirection = screenDirection(mouth, cigTip);
           }
 
           const burstEm = createEmission('exhale-burst', 0, exhaleStrength);
@@ -482,6 +546,7 @@
 
         if (tipToMouth >= exitThreshold * 1.5) {
           proximityAccum = Math.max(0, proximityAccum - 0.1);
+          decayInhaleCharge(dt, 0.8);
         }
       }
 
@@ -492,17 +557,12 @@
         }
 
         smokeState = 'inhaling';
-        inhaleAccumulated = clamp01(inhaleAccumulated + 0.025);
+        addInhaleCharge(dt, proximityRatio);
         var inhaleDir = null;
         if (cigTip && mouth) {
-          var idx = mouth.x - cigTip.x;
-          var idy = mouth.y - cigTip.y;
-          var ilen = Math.hypot(idx, idy);
-          if (ilen > 0.001) {
-            inhaleDir = { x: idx / ilen, y: idy / ilen };
-          }
+          inhaleDir = screenDirection(cigTip, mouth);
         }
-        var inhaleEm = createEmission('fingertip', 0, 0.35);
+        var inhaleEm = createEmission('fingertip', inhaleCharge, 0.24 + inhaleCharge * 0.24);
         inhaleEm.direction = inhaleDir;
         inhaleEm.inhaling = true;
         return {
@@ -522,7 +582,7 @@
 
       smokeState = 'fingertip';
       blendFactor = Math.max(0, blendFactor - 0.08);
-      inhaleAccumulated = Math.max(0, inhaleAccumulated - 0.01);
+      decayInhaleCharge(dt, 1);
       return {
         state: 'fingertip',
         emitPos: cigTip,

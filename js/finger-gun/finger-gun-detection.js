@@ -61,7 +61,9 @@
     var mcp = landmarks[mcpIndex];
     var pip = landmarks[pipIndex];
     var tip = landmarks[tipIndex];
+    var foldedInDepth = distance3D(mcp, tip) < distance3D(mcp, pip) * 1.08;
     return (
+      foldedInDepth ||
       distance2D(mcp, tip) < distance2D(mcp, pip) * 1.18 ||
       tip.y > pip.y + 0.02
     );

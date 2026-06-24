@@ -211,3 +211,132 @@ test('smoke state machine keeps exhaling past the initial burst window', () => {
   assert.equal(sustained.state, 'exhaling');
   assert.equal(sustained.emission.type, 'exhale-stream');
 });
+
+test('smoke state machine does not exhale from tiny jitter while still near the mouth', () => {
+  const machine = createSmokeStateMachine();
+  const mouth = { x: 0.5, y: 0.48 };
+
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.5 },
+    mouth,
+    faceHeight: 0.4,
+  }, 0);
+  machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.505 },
+    mouth,
+    faceHeight: 0.4,
+  }, 40);
+  const result = machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.512 },
+    mouth,
+    faceHeight: 0.4,
+  }, 90);
+
+  assert.equal(result.state, 'inhaling');
+  assert.equal(result.emission.type, 'fingertip');
+});
+
+test('smoke exhale direction is expressed in mirrored canvas coordinates', () => {
+  const machine = createSmokeStateMachine();
+  const mouth = { x: 0.5, y: 0.48 };
+
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 0);
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 32);
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 64);
+
+  const exhale = machine.update({
+    poseActive: true,
+    cigTip: { x: 0.68, y: 0.43 },
+    mouth,
+    faceHeight: 0.4,
+  }, 140);
+
+  assert.equal(exhale.state, 'exhaling');
+  assert.equal(exhale.emission.type, 'exhale-burst');
+  assert.ok(exhale.emission.direction.x < 0, 'normalized x right of mouth should render as screen-left exhale');
+});
+
+test('smoke inhale direction is expressed in mirrored canvas coordinates', () => {
+  const machine = createSmokeStateMachine();
+  const mouth = { x: 0.5, y: 0.48 };
+
+  machine.update({ poseActive: true, cigTip: { x: 0.48, y: 0.5 }, mouth, faceHeight: 0.4 }, 0);
+  machine.update({ poseActive: true, cigTip: { x: 0.48, y: 0.5 }, mouth, faceHeight: 0.4 }, 32);
+  const inhaling = machine.update({ poseActive: true, cigTip: { x: 0.48, y: 0.5 }, mouth, faceHeight: 0.4 }, 64);
+
+  assert.equal(inhaling.state, 'inhaling');
+  assert.equal(inhaling.emission.type, 'fingertip');
+  assert.ok(inhaling.emission.direction.x < 0, 'smoke at screen-right should be pulled screen-left toward the mouth');
+});
+
+function exhaleAfterHeldInhale(frameInterval) {
+  const machine = createSmokeStateMachine();
+  const mouth = { x: 0.5, y: 0.48 };
+
+  for (let now = 0; now <= 640; now += frameInterval) {
+    machine.update({
+      poseActive: true,
+      cigTip: { x: 0.5, y: 0.5 },
+      mouth,
+      faceHeight: 0.4,
+    }, now);
+  }
+
+  return machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.73 },
+    mouth,
+    faceHeight: 0.4,
+  }, 760);
+}
+
+test('smoke inhale strength is based on held time instead of render frame count', () => {
+  const fastFrames = exhaleAfterHeldInhale(16);
+  const sparseFrames = exhaleAfterHeldInhale(120);
+
+  assert.equal(fastFrames.state, 'exhaling');
+  assert.equal(sparseFrames.state, 'exhaling');
+  assert.equal(fastFrames.emission.type, 'exhale-burst');
+  assert.equal(sparseFrames.emission.type, 'exhale-burst');
+  assert.ok(sparseFrames.emission.strength >= 0.65, `expected charged exhale strength, got ${sparseFrames.emission.strength}`);
+  assert.ok(
+    Math.abs(fastFrames.emission.strength - sparseFrames.emission.strength) <= 0.2,
+    `expected similar strength across frame rates, got ${fastFrames.emission.strength} vs ${sparseFrames.emission.strength}`
+  );
+});
+
+test('smoke state machine observes cooldown before starting another inhale', () => {
+  const machine = createSmokeStateMachine({
+    exhaleHoldDuration: 260,
+    exhaleBurstDuration: 90,
+    cooldownDuration: 220,
+  });
+  const mouth = { x: 0.5, y: 0.48 };
+
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 0);
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 80);
+  machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.5 }, mouth, faceHeight: 0.4 }, 160);
+  const exhale = machine.update({ poseActive: true, cigTip: { x: 0.5, y: 0.73 }, mouth, faceHeight: 0.4 }, 260);
+
+  assert.equal(exhale.state, 'exhaling');
+
+  const cooldownStart = machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.5 },
+    mouth,
+    faceHeight: 0.4,
+  }, 540);
+  const stillCooling = machine.update({
+    poseActive: true,
+    cigTip: { x: 0.5, y: 0.5 },
+    mouth,
+    faceHeight: 0.4,
+  }, 620);
+
+  assert.equal(cooldownStart.state, 'fingertip');
+  assert.equal(stillCooling.state, 'fingertip');
+  assert.notEqual(stillCooling.state, 'inhaling');
+});

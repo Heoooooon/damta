@@ -2,3 +2,12 @@
 .superpowers/
 node_modules/
 .vercel
+
+# tooling / agent artifacts
+.claude/
+.opencode/
+.playwright-cli/
+.superpowers/
+
+# generated test/QA output
+output/

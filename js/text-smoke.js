@@ -18,6 +18,8 @@
   let field = null;
   let flowBiasX = 0;
   let flowBiasY = 0;
+  let renderQualityScale = 1;
+  const emitBudgets = Object.create(null);
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -89,6 +91,54 @@
     }
   }
 
+  function getActivePhaseCount(phase) {
+    let count = 0;
+    for (let i = 0; i < active.length; i++) {
+      if (active[i].phase === phase) count += 1;
+    }
+    return count;
+  }
+
+  function getEmissionProfile(mode, phase) {
+    if (!mode || !mode.emissions) return null;
+    if (phase === 'burst') return mode.emissions.exhaleBurst;
+    if (phase === 'stream') return mode.emissions.exhaleStream;
+    return mode.emissions.fingertip;
+  }
+
+  function getEmissionBudgetKey(mode, phase) {
+    return (mode && mode.name ? mode.name : 'mode') + ':' + phase;
+  }
+
+  function getEmissionCount(mode, phase, strength, dt) {
+    const profile = getEmissionProfile(mode, phase) || {};
+    const baseCount = Math.max(1, profile.count || (phase === 'burst' ? 2 : 1));
+    if (isFieldPhase(phase)) return phase === 'burst' ? Math.max(2, baseCount) : baseCount;
+
+    const frameDt = Math.max(1, dt == null ? 16.6667 : dt);
+    const emitRate = Math.max(
+      0.01,
+      profile.emitRate != null
+        ? profile.emitRate
+        : mode && mode.emitRate != null
+          ? mode.emitRate
+          : 8
+    );
+    const key = getEmissionBudgetKey(mode, phase);
+    const currentBudget = emitBudgets[key] == null ? baseCount : emitBudgets[key];
+    const nextBudget = Math.min(
+      baseCount * Math.max(1, emitRate * 0.5),
+      currentBudget + baseCount * emitRate * (frameDt / 1000) * (strength || 1)
+    );
+    let count = Math.floor(nextBudget);
+    emitBudgets[key] = nextBudget - count;
+
+    if (!count && getActivePhaseCount(phase) === 0) {
+      count = 1;
+    }
+    return count;
+  }
+
   function getTokenText(mode, phase, phraseOverride) {
     if (phraseOverride) return phraseOverride;
     if (phase === 'burst') return nextPhrase(mode, { remember: true });
@@ -99,18 +149,25 @@
   function createToken(mode, phase, x, y, direction, strength, phraseOverride) {
     const style = getStyle(mode, phase);
     const text = getTokenText(mode, phase, phraseOverride);
-    const dirX = direction && typeof direction.x === 'number' ? direction.x : -0.8;
-    const dirY = direction && typeof direction.y === 'number' ? direction.y : -0.2;
+    let dirX = direction && typeof direction.x === 'number' ? direction.x : -0.8;
+    let dirY = direction && typeof direction.y === 'number' ? direction.y : -0.2;
+    if (phase === 'fingertip') {
+      dirX = 0;
+      dirY = -1;
+    } else if (phase === 'burst' || phase === 'stream') {
+      dirX = dirX < 0 ? -1 : 1;
+      dirY = -0.08;
+    }
     const scale = clamp(strength || 1, 0.6, 1.8);
-    const spreadX = phase === 'burst' ? 30 : phase === 'stream' ? 22 : 12;
-    const spreadY = phase === 'burst' ? 16 : phase === 'stream' ? 14 : 8;
+    const spreadX = phase === 'burst' ? 30 : phase === 'stream' ? 22 : phase === 'inhaling' ? 8 : 7;
+    const spreadY = phase === 'burst' ? 16 : phase === 'stream' ? 14 : phase === 'inhaling' ? 6 : 5;
     const driftX = phase === 'fingertip'
-      ? randomBetween(-0.25, 0.25)
+      ? randomBetween(-0.025, 0.025)
       : phase === 'burst'
         ? randomBetween(-0.18, 0.18)
         : randomBetween(-0.12, 0.12);
     const driftY = phase === 'fingertip'
-      ? randomBetween(-0.6, -0.2)
+      ? randomBetween(-0.48, -0.16)
       : phase === 'burst'
         ? randomBetween(-0.5, -0.15)
         : randomBetween(-0.3, -0.08);
@@ -123,8 +180,14 @@
       displayText: text,
       x: x + randomBetween(-spreadX, spreadX),
       y: y + randomBetween(-spreadY, spreadY),
-      vx: dirX * randomBetween(0.4, 1.4) * scale + driftX,
-      vy: dirY * randomBetween(0.4, 1.2) * scale + driftY,
+      vx: dirX * randomBetween(
+        phase === 'burst' ? 0.48 : phase === 'stream' ? 0.36 : 0.03,
+        phase === 'burst' ? 0.95 : phase === 'stream' ? 0.74 : 0.11
+      ) * scale + driftX,
+      vy: dirY * randomBetween(
+        phase === 'burst' ? 0.1 : phase === 'stream' ? 0.08 : 0.22,
+        phase === 'burst' ? 0.42 : phase === 'stream' ? 0.34 : 0.58
+      ) * scale + driftY,
       baseAlpha: style.alpha,
       size: style.fontSize * randomBetween(0.85, 1.15),
       sizeGrow: phase === 'burst' ? 0.012 : phase === 'stream' ? 0.008 : 0.006,
@@ -175,10 +238,32 @@
     return 1 - lifeRatio;
   }
 
+  function getPretextAlpha(token) {
+    if (!token.pretextVisible) return 0;
+    const hold = token.pretextHold || 680;
+    const fade = token.pretextFade || 520;
+    const age = token.life || 0;
+    const timeAlpha = age <= hold
+      ? 1
+      : clamp(1 - (age - hold) / Math.max(1, fade), 0, 1);
+    const edgeMargin = Math.max(120, lastCanvasW * 0.12);
+    const edgeAlpha = clamp(
+      Math.min(token.x / edgeMargin, (lastCanvasW - token.x) / edgeMargin),
+      0,
+      1
+    );
+    return clamp(timeAlpha * edgeAlpha, 0, 1);
+  }
+
+  function shouldInjectFieldToken(token) {
+    return !token.pretextVisible || token.life >= (token.fieldDelay || 0);
+  }
+
   function getGridConfig(mode) {
     const fontSize = getStyle(mode || {}, 'stream').fontSize || 21;
-    const cellW = Math.max(12, Math.round(fontSize * 0.72));
-    const cellH = Math.max(16, Math.round(fontSize * 0.96));
+    const resolutionScale = renderQualityScale < 0.75 ? 1.28 : renderQualityScale < 0.9 ? 1.12 : 1;
+    const cellW = Math.max(12, Math.round(fontSize * 0.72 * resolutionScale));
+    const cellH = Math.max(16, Math.round(fontSize * 0.96 * resolutionScale));
     const cols = Math.max(28, Math.round(lastCanvasW / cellW));
     const rows = Math.max(20, Math.round(lastCanvasH / cellH));
     return { cellW, cellH, cols, rows };
@@ -217,11 +302,11 @@
     return row * cols + col;
   }
 
-  function setFieldCell(row, col, amount, ch) {
+  function setFieldCell(row, col, amount, ch, densityCap) {
     if (!field) return;
     if (row < 0 || col < 0 || row >= field.rows || col >= field.cols || amount <= 0) return;
     const idx = cellIndex(field.cols, row, col);
-    field.density[idx] = Math.min(1, field.density[idx] + amount);
+    field.density[idx] = Math.min(densityCap == null ? 1 : densityCap, field.density[idx] + amount);
     if (ch) {
       const code = ch.codePointAt(0);
       if (amount >= field.charStrength[idx]) {
@@ -231,14 +316,29 @@
     }
   }
 
+  function dampFieldCell(row, col, multiplier) {
+    if (!field) return;
+    if (row < 0 || col < 0 || row >= field.rows || col >= field.cols) return;
+    const idx = cellIndex(field.cols, row, col);
+    field.density[idx] *= multiplier;
+    field.charStrength[idx] *= multiplier;
+  }
+
   function injectTokenIntoField(token) {
     const text = Array.from(token.displayText || token.text || '');
     if (!text.length || !field) return;
     const lifeRatio = token.life / token.maxLife;
-    const baseDensity = clamp(token.baseAlpha * getPhaseFade(token, lifeRatio), 0.03, 1);
+    const densityScale = token.fieldDensityScale != null ? token.fieldDensityScale : 1;
+    const baseDensity = clamp(token.baseAlpha * getPhaseFade(token, lifeRatio) * densityScale, 0.02, 0.92);
+    const densityCap = token.fieldDensityCap || 1;
+    const sourceSuppress = token.phase === 'burst' || token.phase === 'stream'
+      ? clamp(1 - lifeRatio * 3.1, 0.06, 1)
+      : 1;
     const centerCol = clamp(Math.round(token.x / field.cellW), 0, field.cols - 1);
     const centerRow = clamp(Math.round(token.y / field.cellH), 0, field.rows - 1);
-    const radius = token.phase === 'burst' ? 3 : token.phase === 'stream' ? 2 : 1;
+    const radius = token.phase === 'burst' ? 2 : token.phase === 'stream' ? 2 : 1;
+    const scatterCols = token.fieldScatterCols || 0;
+    const scatterRows = token.fieldScatterRows || 0;
     const upwardBiasRows = token.phase === 'burst'
       ? 3 + Math.min(4, Math.round(lifeRatio * 4))
       : token.phase === 'stream'
@@ -253,17 +353,37 @@
     const startCol = centerCol - Math.floor((text.length - 1) / 2) + dirColStep * forwardBiasCols;
     const plumeWave = Math.sin(token.id * 0.91 + lifeRatio * 6.4);
 
+    if (token.phase === 'burst' || token.phase === 'stream') {
+      const clearMultiplier = clamp(0.74 + lifeRatio * 0.18, 0.74, 0.96);
+      for (let rowOffset = -1; rowOffset <= 3; rowOffset++) {
+        for (let colOffset = -2 - scatterCols; colOffset <= text.length + 1 + scatterCols; colOffset++) {
+          dampFieldCell(centerRow + rowOffset, startCol + colOffset, clearMultiplier);
+        }
+      }
+    }
+
     for (let charIndex = 0; charIndex < text.length; charIndex++) {
       const ch = text[charIndex];
       if (!ch.trim()) continue;
-      const targetCol = startCol + charIndex;
-      setFieldCell(centerRow, targetCol, baseDensity * 0.24, ch);
+      const scatterSeed = token.id * 1.73 + charIndex * 2.19 + lifeRatio * 3.7;
+      const scatterCol = scatterCols
+        ? Math.round(
+          Math.sin(scatterSeed) * scatterCols +
+          Math.sin(scatterSeed * 0.53) * scatterCols * 0.45
+        )
+        : 0;
+      const scatterRow = scatterRows
+        ? Math.round(Math.cos(scatterSeed * 0.83) * scatterRows - lifeRatio * scatterRows * 0.55)
+        : 0;
+      const targetCol = startCol + charIndex + scatterCol;
+      const targetRow = centerRow + scatterRow;
+      setFieldCell(targetRow, targetCol, baseDensity * 0.18 * sourceSuppress, ch, densityCap);
 
       for (let rise = 1; rise <= upwardBiasRows; rise++) {
         const taper = Math.max(0.35, 1 - rise / (upwardBiasRows + 2));
         const waveShift = Math.round(plumeWave * rise * 0.8 + Math.sin(charIndex * 0.8 + token.id) * 0.7);
-        setFieldCell(centerRow - rise, targetCol + waveShift, baseDensity * (0.56 - rise * 0.07) * taper, ch);
-        setFieldCell(centerRow - rise, targetCol + waveShift + (token.vx >= 0 ? 1 : -1), baseDensity * (0.18 - rise * 0.015) * taper, ch);
+        setFieldCell(targetRow - rise, targetCol + waveShift, baseDensity * (0.42 - rise * 0.052) * taper, ch, densityCap);
+        setFieldCell(targetRow - rise, targetCol + waveShift + (token.vx >= 0 ? 1 : -1), baseDensity * (0.13 - rise * 0.011) * taper, ch, densityCap);
       }
 
       for (let dy = -radius; dy <= radius; dy++) {
@@ -272,9 +392,9 @@
           const dist = Math.abs(dx) + Math.abs(dy);
           let feather = dist === 1 ? 0.26 : dist === 2 ? 0.12 : 0.05;
           if (dy < 0) feather *= 1.65;
-          if (dy > 0) feather *= 0.32;
+          if (dy >= 0) feather *= 0.32 * sourceSuppress;
           if (Math.abs(dx) === radius && dy <= 0) feather *= 0.4;
-          setFieldCell(centerRow + dy, targetCol + dx, baseDensity * feather, ch);
+          setFieldCell(targetRow + dy, targetCol + dx, baseDensity * feather, ch, densityCap);
         }
       }
     }
@@ -311,39 +431,54 @@
     };
   }
 
+  function findNearbyChar(sourceChars, sourceStrength, cols, rows, row, col) {
+    let bestCode = 0;
+    let bestStrength = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const rr = row + dy;
+        const cc = col + dx;
+        if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) continue;
+        const idx = cellIndex(cols, rr, cc);
+        const code = sourceChars[idx];
+        const strength = sourceStrength[idx];
+        if (code && strength >= bestStrength) {
+          bestCode = code;
+          bestStrength = strength;
+        }
+      }
+    }
+    return {
+      code: bestCode,
+      strength: bestStrength,
+    };
+  }
+
   function getVelocityAt(row, col) {
     const nx = col / Math.max(1, field.cols - 1);
     const ny = row / Math.max(1, field.rows - 1);
-    // Time-varying wind
-    const windAngle = simTime * 0.08;
-    const windStrength = 0.05 + Math.sin(simTime * 0.3) * 0.03;
+    // Local eddies: avoid a global left-right wind reversal and keep motion organic.
+    const slowTime = simTime * 0.18;
+    const curl = Math.sin(nx * 10.5 + ny * 7.2 + slowTime) * 0.055;
+    const localShear =
+      Math.sin(ny * 6.4 + slowTime * 0.7) * 0.045 +
+      Math.cos((nx + ny) * 8.6 + slowTime * 0.43) * 0.035 +
+      Math.sin(nx * 13.2 - ny * 2.6 + slowTime * 0.55) * 0.025;
 
-    // Vortex / curl noise
-    const curl = Math.sin(nx * 12 + ny * 8 + simTime * 1.2) * 0.12;
-
-    let vx =
-      flowBiasX +
-      Math.sin(ny * 7.4 + simTime * 0.9) * 0.18 +
-      Math.cos((nx + ny) * 9.3 + simTime * 0.42) * 0.08 +
-      Math.sin(nx * 15.4 - ny * 3.2 + simTime * 0.65) * 0.04;
+    let vx = flowBiasX + localShear;
     let vy =
-      (-0.62 + flowBiasY) +
-      Math.cos(nx * 4.8 + simTime * 0.35) * -0.07 +
-      Math.sin((nx - ny) * 7.5 + simTime * 0.47) * -0.05;
+      (-0.34 + flowBiasY) +
+      Math.cos(nx * 4.8 + slowTime * 0.4) * -0.045 +
+      Math.sin((nx - ny) * 7.5 + slowTime * 0.5) * -0.035;
 
-    // Apply wind
-    vx += Math.cos(windAngle) * windStrength;
-    vy += Math.sin(windAngle) * windStrength * 0.3;
-
-    // Apply swirl
+    // Apply small curl without letting it flip the whole plume direction.
     vx += curl * (ny - 0.4);
-    vy += -curl * (nx - 0.5) * 0.5;
+    vy += -curl * (nx - 0.5) * 0.38;
 
-    // Ceiling spread: smoke pools at top
-    if (ny < 0.15) {
-      vy *= 0.3;
-      vx *= 1.8;
-    }
+    // Natural rise spread: widen with altitude through small, spatially varied eddies.
+    const heightSpread = Math.pow(1 - ny, 1.2);
+    vx += Math.sin(slowTime * 0.72 + row * 0.37) * heightSpread * 0.045;
+    vx += Math.cos(slowTime * 0.48 + col * 0.21) * heightSpread * 0.035;
 
     return { vx: vx, vy: vy };
   }
@@ -358,7 +493,7 @@
     const targetDensity = field.tempDensity;
     const targetChars = field.tempCharCodes;
     const targetStrength = field.tempCharStrength;
-    const decay = dormant ? 0.992 : 0.996;
+    const decay = dormant ? 0.996 : 0.999;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
@@ -377,8 +512,17 @@
 
         const sampled = sampleNearestChar(sourceChars, sourceStrength, cols, rows, sampleRow, sampleCol);
         targetDensity[idx] = density;
-        targetChars[idx] = density > 0.005 ? sampled.code : 0;
-        targetStrength[idx] = density > 0.005 ? Math.max(sampled.strength * 0.96, density) : 0;
+        const nearby = sampled.code || sourceChars[idx]
+          ? { code: sampled.code || sourceChars[idx], strength: Math.max(sampled.strength || 0, sourceStrength[idx] || 0) }
+          : findNearbyChar(sourceChars, sourceStrength, cols, rows, Math.round(sampleRow), Math.round(sampleCol));
+        const retainedCode = nearby.code;
+        if (retainedCode && density > 0.0002) {
+          const memoryStrength = Math.max(nearby.strength || 0, sourceStrength[idx] || 0);
+          density = Math.max(density, Math.min(0.012, memoryStrength * 0.004));
+          targetDensity[idx] = density;
+        }
+        targetChars[idx] = density > 0.002 ? retainedCode : 0;
+        targetStrength[idx] = density > 0.002 ? Math.max((nearby.strength || 0) * 0.985, sourceStrength[idx] * 0.96, density) : 0;
       }
     }
 
@@ -414,57 +558,52 @@
 
     const cells = [];
     let densityTotal = 0;
-    let rowWeighted = 0;
-    let colWeighted = 0;
-    let minRow = Infinity;
-    let maxRow = -Infinity;
-    let minCol = Infinity;
-    let maxCol = -Infinity;
+    const rowStats = new Map();
 
     for (let row = 0; row < field.rows; row++) {
       for (let col = 0; col < field.cols; col++) {
         const idx = cellIndex(field.cols, row, col);
         const density = field.density[idx];
-        if (density <= 0.006 || !field.charCodes[idx]) continue;
+        if (density <= 0.004 || !field.charCodes[idx]) continue;
         densityTotal += density;
-        rowWeighted += row * density;
-        colWeighted += col * density;
-        minRow = Math.min(minRow, row);
-        maxRow = Math.max(maxRow, row);
-        minCol = Math.min(minCol, col);
-        maxCol = Math.max(maxCol, col);
+        const rowInfo = rowStats.get(row) || {
+          density: 0,
+          weightedCol: 0,
+          minCol: col,
+          maxCol: col,
+        };
+        rowInfo.density += density;
+        rowInfo.weightedCol += col * density;
+        rowInfo.minCol = Math.min(rowInfo.minCol, col);
+        rowInfo.maxCol = Math.max(rowInfo.maxCol, col);
+        rowStats.set(row, rowInfo);
       }
     }
 
-    const centerRow = densityTotal > 0 ? rowWeighted / densityTotal : 0;
-    const centerCol = densityTotal > 0 ? colWeighted / densityTotal : 0;
-    const plumeHalfWidth = Math.max(2, (maxCol - minCol + 1) / 2);
-    const plumeHeight = Math.max(1, maxRow - minRow + 1);
-
     for (let row = 0; row < field.rows; row++) {
+      const rowInfo = rowStats.get(row);
+      if (!rowInfo || !rowInfo.density) continue;
+      const rowCenterCol = rowInfo.weightedCol / rowInfo.density;
+      const rawHalfWidth = Math.max(1.4, (rowInfo.maxCol - rowInfo.minCol + 1) / 2);
+      const rowWave = Math.sin(row * 0.72 + rowCenterCol * 0.18) * 0.55;
+      const allowedHalfWidth = clamp(rawHalfWidth + 1.8 + rowWave, 3.0, 11.8);
+
       for (let col = 0; col < field.cols; col++) {
         const idx = cellIndex(field.cols, row, col);
         let density = field.density[idx];
         const code = field.charCodes[idx];
-        if (density <= 0.03 || !code) continue;
+        if (density <= 0.0025 || !code) continue;
 
-        const upward = clamp((centerRow - row) / plumeHeight, -0.5, 1);
-        const downward = clamp((row - centerRow) / plumeHeight, 0, 1);
-        const wave = Math.sin(row * 0.72 + centerCol * 0.18) * 0.45;
-        const allowedHalfWidth = Math.max(
-          1.2,
-          plumeHalfWidth * (1 - upward * 1.18 - downward * 0.72) + wave
-        );
-        const colDistance = Math.abs(col - centerCol);
-        if (colDistance > allowedHalfWidth + 0.25) {
+        const colDistance = Math.abs(col - rowCenterCol);
+        if (colDistance > allowedHalfWidth + 0.5) {
           continue;
         }
         if (colDistance > allowedHalfWidth) {
-          density *= 0.18;
+          density *= 0.28;
         }
-        if (density <= 0.007) continue;
+        if (density <= 0.0015) continue;
 
-        const jitterSeed = Math.sin(row * 12.9898 + col * 78.233 + centerCol * 0.37);
+        const jitterSeed = Math.sin(row * 12.9898 + col * 78.233 + rowCenterCol * 0.37);
         const offsetX = jitterSeed * Math.min(field.cellW * 0.22, 2.4);
         const offsetY = Math.cos(row * 5.17 + col * 2.31) * Math.min(field.cellH * 0.12, 1.4);
         const densityClamped = clamp(density, 0, 1);
@@ -535,6 +674,7 @@
       ctx.font = `${baseFontSize}px ${grid.fontFamily || 'sans-serif'}`;
       ctx.fillStyle = getDensityColor(cell.density, cell.alpha);
       ctx.fillText(cell.char, drawX, cell.y - riseOffset);
+      if (renderQualityScale < 0.75) continue;
       // Layer 2: faint afterimage above
       if (cell.alpha > 0.12) {
         ctx.fillStyle = getDensityColor(cell.density, cell.alpha * 0.22);
@@ -559,7 +699,83 @@
     }
   }
 
-  function emit(normX, normY, canvasW, canvasH, mode, emission) {
+  function isFieldPhase(phase) {
+    return phase === 'burst' || phase === 'stream';
+  }
+
+  function renderPretextTokens(ctx) {
+    for (let i = 0; i < active.length; i++) {
+      const token = active[i];
+      if (!token.pretextVisible || !token.pretext) continue;
+      const alpha = token.pretextAlpha != null ? token.pretextAlpha : getPretextAlpha(token);
+      if (alpha <= 0.03) continue;
+
+      const style = getStyle(token.mode, token.phase);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `700 ${Math.round((style.fontSize || token.size) * 1.08)}px ${token.mode.textFontFamily || 'sans-serif'}`;
+      ctx.fillStyle = 'rgba(244,248,255,0.96)';
+      const padding = Math.max(22, Math.min(56, lastCanvasW * 0.075));
+      const measuredWidth = typeof ctx.measureText === 'function'
+        ? ctx.measureText(token.pretext).width || 0
+        : 0;
+      const halfWidth = Math.min(Math.max(0, lastCanvasW * 0.5 - padding), measuredWidth * 0.5);
+      const minX = padding + halfWidth;
+      const maxX = lastCanvasW - padding - halfWidth;
+      const drawX = maxX >= minX ? clamp(token.x, minX, maxX) : lastCanvasW * 0.5;
+      ctx.fillText(token.pretext, drawX, token.y);
+      ctx.restore();
+    }
+  }
+
+  function renderEmberTokens(ctx) {
+    for (let i = 0; i < active.length; i++) {
+      const token = active[i];
+      if (isFieldPhase(token.phase)) continue;
+      const lifeRatio = token.life / token.maxLife;
+      const alpha = clamp(token.baseAlpha * getPhaseFade(token, lifeRatio), 0, 0.34);
+      if (alpha <= 0.01) continue;
+
+      const glyphs = Array.from(token.displayText || token.text || '').filter(function (ch) { return ch.trim(); });
+      const glyph = glyphs.length ? glyphs[token.id % glyphs.length] : '·';
+      const strandLean = Math.sin(token.id * 1.7 + lifeRatio * 3.2) * 1.2;
+
+      ctx.save();
+      ctx.translate(token.x, token.y);
+      ctx.rotate(token.rotation * 0.35);
+      ctx.font = `${Math.round(token.size)}px ${token.mode.textFontFamily || 'sans-serif'}`;
+
+      // Thin vertical ember wisp: separate from mouth fluid field, so it never syncs with exhale smoke.
+      if (typeof ctx.beginPath === 'function') {
+        ctx.beginPath();
+        ctx.moveTo(0, -token.size * 0.1);
+        ctx.quadraticCurveTo(
+          strandLean * 0.55,
+          -token.size * 1.05,
+          strandLean * 0.35,
+          -token.size * 2.15
+        );
+        ctx.lineWidth = Math.max(0.72, token.size * 0.085);
+        ctx.strokeStyle = `rgba(210,216,224,${(alpha * 0.88).toFixed(4)})`;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = `rgba(210,216,224,${(alpha * 1.05).toFixed(4)})`;
+      ctx.fillText(glyph, 0, 0);
+
+      if (alpha > 0.028) {
+        ctx.fillStyle = `rgba(210,216,224,${(alpha * 0.48).toFixed(4)})`;
+        ctx.fillText(glyph, strandLean * 0.42, -token.size * 0.9);
+      }
+      if (alpha > 0.046) {
+        ctx.fillStyle = `rgba(255,218,160,${(alpha * 0.16).toFixed(4)})`;
+        ctx.fillText('·', strandLean * 0.28, -token.size * 1.55);
+      }
+      ctx.restore();
+    }
+  }
+
+  function emit(normX, normY, canvasW, canvasH, mode, emission, dt) {
     if (!mode || mode.renderStyle !== 'text-smoke' || !emission || !emission.type) return;
     lastCanvasW = canvasW || lastCanvasW;
     lastCanvasH = canvasH || lastCanvasH;
@@ -567,9 +783,10 @@
 
     const x = lastCanvasW * (1 - normX);
     const y = lastCanvasH * normY;
-    const phase = mapEmissionType(emission.type);
+    const phase = emission.inhaling ? 'inhaling' : mapEmissionType(emission.type);
     const strength = emission.strength || 1;
-    const count = phase === 'burst' ? 2 : 1;
+    const count = getEmissionCount(mode, phase, strength, dt);
+    if (!count) return;
     const phraseOverride = phase === 'burst'
       ? nextPhrase(mode, { remember: true })
       : phase === 'stream'
@@ -578,13 +795,34 @@
 
     const dirX = emission.direction && typeof emission.direction.x === 'number' ? emission.direction.x : -0.8;
     const dirY = emission.direction && typeof emission.direction.y === 'number' ? emission.direction.y : -0.2;
-    flowBiasX = clamp(dirX * 0.32, -0.42, 0.42);
-    flowBiasY = clamp(-dirY * 0.08, -0.04, 0.14);
+    if (isFieldPhase(phase)) {
+      flowBiasX = clamp((dirX < 0 ? -1 : 1) * 0.34, -0.48, 0.48);
+      flowBiasY = clamp(-dirY * 0.03, -0.02, 0.06);
+    }
 
     for (let i = 0; i < count; i++) {
       const token = createToken(mode, phase, x, y, emission.direction, strength, phraseOverride);
+      if (phase === 'burst' && i === 0) {
+        token.pretext = token.text;
+        token.pretextVisible = true;
+        token.pretextHold = 720;
+        token.pretextFade = 520;
+        token.fieldDelay = 520;
+        token.fieldDensityScale = 0.28;
+        token.fieldDensityCap = 0.86;
+        token.fieldScatterCols = 7;
+        token.fieldScatterRows = 3;
+        token.pretextAlpha = getPretextAlpha(token);
+      } else if (phase === 'burst') {
+        token.fieldDensityScale = 0.38;
+        token.fieldDensityCap = 0.86;
+        token.fieldScatterCols = 7;
+        token.fieldScatterRows = 3;
+      }
       active.push(token);
-      injectTokenIntoField(token);
+      if (isFieldPhase(phase) && shouldInjectFieldToken(token)) {
+        injectTokenIntoField(token);
+      }
     }
     enforcePhaseCap(mode, phase);
   }
@@ -592,10 +830,11 @@
   function update(ctx, dt, options) {
     const dormant = !!(options && options.dormant);
     const inMouth = options && options.inhalingMouth;
+    renderQualityScale = clamp(options && options.qualityScale != null ? options.qualityScale : 1, 0.6, 1);
     const cleanupBoost = dormant ? 1.8 : 1;
     const step = Math.max(0.7, Math.min(2.5, dt / 16.6667));
     simTime += dt / 1000;
-    flowBiasX *= dormant ? 0.94 : 0.988;
+    flowBiasX *= dormant ? 0.985 : 0.996;
     flowBiasY = flowBiasY * (dormant ? 0.96 : 0.992) + 0.0008;
 
     const mode = active[0] ? active[0].mode : null;
@@ -610,7 +849,7 @@
         continue;
       }
 
-      if (inMouth && (token.phase === 'inhaling' || token.phase === 'fingertip')) {
+      if (inMouth && token.phase === 'inhaling') {
         const dx = inMouth.x - token.x;
         const dy = inMouth.y - token.y;
         const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
@@ -633,10 +872,13 @@
         token.size += token.sizeGrow * step;
       }
       updateDisplayText(token, inMouth);
+      token.pretextAlpha = getPretextAlpha(token);
     }
 
     for (let i = 0; i < active.length; i++) {
-      injectTokenIntoField(active[i]);
+      if (isFieldPhase(active[i].phase) && shouldInjectFieldToken(active[i])) {
+        injectTokenIntoField(active[i]);
+      }
     }
 
     advectAndDiffuseField(dormant);
@@ -647,6 +889,8 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     renderDensityGrid(ctx, grid);
+    renderPretextTokens(ctx);
+    renderEmberTokens(ctx);
     ctx.restore();
   }
 
@@ -654,6 +898,9 @@
     active.length = 0;
     simTime = 0;
     field = null;
+    for (const key in emitBudgets) {
+      delete emitBudgets[key];
+    }
   }
 
   function getActiveCount() {
@@ -669,6 +916,11 @@
         displayText: token.displayText,
         x: token.x,
         y: token.y,
+        vx: token.vx,
+        vy: token.vy,
+        pretext: token.pretext,
+        pretextVisible: !!token.pretextVisible,
+        pretextAlpha: token.pretextVisible ? getPretextAlpha(token) : 0,
       };
     });
     const grid = buildDensityGrid();
@@ -679,6 +931,16 @@
     tokens.cellW = grid.cellW;
     tokens.cellH = grid.cellH;
     tokens.cells = grid.cells;
+    if (field) {
+      let densityTotal = 0;
+      let charCellCount = 0;
+      for (let i = 0; i < field.density.length; i++) {
+        densityTotal += field.density[i];
+        if (field.charCodes[i]) charCellCount += 1;
+      }
+      tokens.fieldDensityTotal = densityTotal;
+      tokens.fieldCharCellCount = charCellCount;
+    }
     return tokens;
   }
 
